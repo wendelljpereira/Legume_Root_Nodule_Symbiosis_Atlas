@@ -1,0 +1,13 @@
+.DS_Store
+test-results/
+manifest.json
+scripts/build_atlas_context_summary.py
+
+# Large atlas objects cannot be pushed to GitHub without Git LFS.
+*.rds
+*.RDS
+
+# Runtime tables and annotations required by the app.
+!annotations/*.tsv
+!metadata/**/*.tsv
+!orthogroups/*.tsv

@@ -1,0 +1,8 @@
+"dataset_scope"	"species_key"	"integration_method"	"integration_label"	"cells"	"genes"	"sample_n"	"group_label"	"group_n"	"group_preview"	"species_n"	"species_preview"	"time_n"	"time_preview"
+"within"	"medicago"	"ComBat_BBKNN"	"ComBat/BBKNN"	80004	37454	18							
+"within"	"medicago"	"Seurat"	"Seurat"	80004	37454	18							
+"within"	"glycine"	"ComBat_BBKNN"	"ComBat/BBKNN"	101258	44317	14							
+"within"	"glycine"	"Seurat"	"Seurat"	101258	44317	14							
+"within"	"lotus"	"ComBat_BBKNN"	"ComBat/BBKNN"	28622	25212	8							
+"within"	"lotus"	"Seurat"	"Seurat"	28622	25212	8							
+"cross"	"cross"		"Camex"	209884	2000	40							
