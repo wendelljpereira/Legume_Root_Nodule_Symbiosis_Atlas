@@ -211,6 +211,20 @@ display_gene_labels <- function(species_key, gene_ids, include_gene_id_with_comm
         pull(display_label)
 }
 
+set_heatmap_row_labels <- function(heatmap_obj, labels) {
+    labels <- as.character(labels)
+
+    heatmap_obj@row_names_param$labels <- labels
+
+    row_name_anno <- heatmap_obj@row_names_param$anno
+    if (inherits(row_name_anno, "AnnotationFunction") &&
+        exists("value", envir = row_name_anno@var_env, inherits = FALSE)) {
+        assign("value", labels, envir = row_name_anno@var_env)
+    }
+
+    heatmap_obj
+}
+
 metric_tile <- function(value, label) {
     div(
         class = "metric-tile",
@@ -327,6 +341,20 @@ wrap_titled_plot <- function(plot_obj, title) {
     wrap_elements(full = plot_obj + plot_title_annotation(title))
 }
 
+format_within_feature_panel_title <- function(title, source_species, target_species) {
+    title <- as.character(title %||% "")
+
+    if (
+        target_species %in% c("glycine", "lotus") &&
+        !identical(source_species, target_species) &&
+        grepl(" -> ", title, fixed = TRUE)
+    ) {
+        return(sub(" -> ", "\n", title, fixed = TRUE))
+    }
+
+    title
+}
+
 compact_feature_legend_guides <- function() {
     guides(
         colour = guide_colourbar(
@@ -398,7 +426,7 @@ feature_umap_height_px <- function(feature_n, feature_cols, split_by = "none", p
 
     if (identical(split_by, "none")) {
         feature_rows <- ceiling(feature_n / feature_cols)
-        return(max(483L, as.integer(ceiling(feature_rows * 345L))))
+        return(max(560L, as.integer(ceiling(feature_rows * 400L))))
     }
 
     rows_per_gene <- ceiling(max(1L, as.integer(panels_per_gene %||% 1L)) / feature_cols)
@@ -481,10 +509,8 @@ condition_level_order <- c(
     "24h",
     "48h",
     "96h",
-    "WT_Mock_5dpi",
-    "WT_Mloti_5dpi",
-    "WT_Mock_10dpi",
-    "WT_Mloti_10dpi",
+    "5dpi",
+    "10dpi",
     "12dpi",
     "14dpi",
     "15dpi",
@@ -493,24 +519,25 @@ condition_level_order <- c(
     "28dpi"
 )
 
-distribution_condition_palette <- c(
+condition_root_palette <- c(
     "Roots" = "#1B4332",
-    "roots" = "#1B4332",
-    "0.5h" = "#C84C09",
-    "6h" = "#2C7FB8",
-    "24h" = "#8E44AD",
-    "48h" = "#16A085",
-    "96h" = "#D81B60",
-    "WT_Mock_5dpi" = "#B7A58F",
-    "WT_Mloti_5dpi" = "#E07A5F",
-    "WT_Mock_10dpi" = "#8D99AE",
-    "WT_Mloti_10dpi" = "#4D9078",
-    "12dpi" = "#6C5CE7",
-    "14dpi" = "#2A9D8F",
-    "15dpi" = "#E9C46A",
-    "14d" = "#B8860B",
-    "21pdi" = "#457B9D",
-    "28dpi" = "#C06C84"
+    "roots" = "#1B4332"
+)
+
+condition_progression_palette <- c(
+    "#C84C09",
+    "#2C7FB8",
+    "#8E44AD",
+    "#16A085",
+    "#D81B60",
+    "#B8860B",
+    "#457B9D",
+    "#C06C84",
+    "#E9C46A",
+    "#8D99AE",
+    "#4D9078",
+    "#E07A5F",
+    "#B7A58F"
 )
 
 distribution_sample_palette <- c(
@@ -519,8 +546,6 @@ distribution_sample_palette <- c(
     "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
     "#8C564B", "#E377C2", "#17BECF", "#BCBD22", "#7F7F7F"
 )
-
-composition_condition_palette <- distribution_condition_palette
 
 metadata_level_order <- function(values, column_name) {
     values_chr <- as.character(values)
@@ -559,6 +584,41 @@ order_metadata_values <- function(values, column_name) {
     factor(values_chr, levels = ordered_levels, ordered = TRUE)
 }
 
+condition_color_map <- function(values, column_name) {
+    ordered_levels <- metadata_level_order(values, column_name)
+
+    if (!length(ordered_levels)) {
+        return(setNames(character(0), character(0)))
+    }
+
+    palette_values <- setNames(rep(NA_character_, length(ordered_levels)), ordered_levels)
+    root_levels <- ordered_levels[ordered_levels %in% names(condition_root_palette)]
+
+    if (length(root_levels)) {
+        palette_values[root_levels] <- unname(condition_root_palette[root_levels])
+    }
+
+    non_root_levels <- ordered_levels[is.na(palette_values)]
+
+    if (length(non_root_levels)) {
+        progression_values <- condition_progression_palette[seq_len(min(length(non_root_levels), length(condition_progression_palette)))]
+
+        if (length(non_root_levels) > length(condition_progression_palette)) {
+            progression_values <- c(
+                progression_values,
+                grDevices::hcl.colors(
+                    length(non_root_levels) - length(condition_progression_palette),
+                    palette = "Dynamic"
+                )
+            )
+        }
+
+        palette_values[non_root_levels] <- progression_values
+    }
+
+    palette_values[ordered_levels]
+}
+
 metadata_colors_use <- function(values, column_name) {
     ordered_levels <- metadata_level_order(values, column_name)
 
@@ -567,17 +627,7 @@ metadata_colors_use <- function(values, column_name) {
     }
 
     if (column_name %in% c("Group", "condition")) {
-        palette_values <- unname(distribution_condition_palette[ordered_levels])
-
-        if (anyNA(palette_values)) {
-            palette_values[is.na(palette_values)] <- grDevices::hcl.colors(
-                sum(is.na(palette_values)),
-                palette = "Dynamic"
-            )
-        }
-
-        names(palette_values) <- ordered_levels
-        return(palette_values)
+        return(condition_color_map(values, column_name))
     }
 
     if (column_name %in% c("Sample", "sample")) {
@@ -610,23 +660,11 @@ composition_colors_use <- function(values, column_name) {
     }
 
     if (column_name %in% c("Group", "condition")) {
-        palette_values <- unname(composition_condition_palette[ordered_levels])
-
-        if (anyNA(palette_values)) {
-            palette_values[is.na(palette_values)] <- grDevices::hcl.colors(
-                sum(is.na(palette_values)),
-                palette = "Pastel 1"
-            )
-        }
-
-        names(palette_values) <- ordered_levels
-        return(palette_values)
+        return(condition_color_map(values, column_name))
     }
 
     if (column_name %in% c("Sample", "sample")) {
-        palette_values <- grDevices::hcl.colors(length(ordered_levels), palette = "Set 3")
-        names(palette_values) <- ordered_levels
-        return(palette_values)
+        return(metadata_colors_use(values, column_name))
     }
 
     metadata_colors_use(values, column_name)
@@ -3039,30 +3077,90 @@ server <- function(input, output, session) {
                     ungroup()
             })
 
-            umap_plot_obj <- reactive({
-                resolution <- expression_resolution()
-                obj <- tab_object()
-                split_by <- tab_split_by()
-                pt_size <- max(2.0, as.numeric(input[[paste0(prefix, "_distribution_pt_size")]] %||% 1.1) * 1.8)
-                split_enabled <- !identical(split_by, "none")
-                split_columns <- if (split_enabled) 4L else NULL
-                plot_obj <- apply_metadata_display_order(obj, split_by)
-                feature_grid_cols <- within_feature_grid_cols(
-                    feature_n = length(resolution$plot_features),
-                    split_by = split_by
-                )
+	            umap_plot_obj <- reactive({
+	                resolution <- expression_resolution()
+	                obj <- tab_object()
+	                source_species <- input$source_species %||% "medicago"
+	                reference_group_by <- tab_composition_cluster_by()
+	                split_by <- tab_split_by()
+	                pt_size <- max(2.0, as.numeric(input[[paste0(prefix, "_distribution_pt_size")]] %||% 1.1) * 1.8)
+	                split_enabled <- !identical(split_by, "none")
+	                feature_panel_n <- length(resolution$plot_features) + 1L
+	                plot_obj <- apply_metadata_display_order(obj, c(split_by, reference_group_by))
+	                split_panels <- if (split_enabled) split_panel_count(plot_obj, split_by) else 1L
+	                split_columns <- if (split_enabled) min(4L, split_panels) else NULL
+	                feature_grid_cols <- within_feature_grid_cols(
+	                    feature_n = feature_panel_n,
+	                    split_by = split_by
+	                )
 
-                validate(
-                    need(
-                        length(resolution$plot_features) > 0,
-                        paste("No mapped genes are available for", tab_label, "in the selected atlas.")
-                    )
-                )
+	                validate(
+	                    need(
+	                        length(resolution$plot_features) > 0,
+	                        paste("No mapped genes are available for", tab_label, "in the selected atlas.")
+	                    ),
+	                    need(
+	                        !is.na(reference_group_by) && nzchar(reference_group_by),
+	                        paste("No clustering metadata are available for", tab_label, ".")
+	                    )
+	                )
 
-                plot_list <- lapply(resolution$plot_features, function(feature_id) {
-                    feature_plot <- scCustomize::FeaturePlot_scCustom(
-                        seurat_object = plot_obj,
-                        features = feature_id,
+	                reference_color_map <- distribution_color_map(
+	                    plot_obj@meta.data[[reference_group_by]],
+	                    reference_group_by
+	                )
+
+	                reference_plot <- scCustomize::DimPlot_scCustom(
+	                    seurat_object = plot_obj,
+	                    colors_use = unname(reference_color_map),
+	                    group.by = reference_group_by,
+	                    split.by = if (split_enabled) split_by else NULL,
+	                    pt.size = pt_size,
+	                    label = identical(split_by, "none"),
+	                    repel = TRUE,
+	                    raster = TRUE,
+	                    num_columns = split_columns
+	                )
+
+	                reference_plot <- reference_plot &
+	                    labs(color = NULL) &
+	                    app_plot_theme() &
+	                    theme(
+	                        legend.title = element_blank(),
+	                        legend.position = "none",
+	                        panel.grid = element_blank(),
+	                        axis.title = element_blank(),
+	                        axis.text = element_blank(),
+	                        axis.ticks = element_blank(),
+	                        axis.line = element_blank(),
+	                        plot.margin = margin(4, 8, 6, 6)
+	                    )
+
+	                reference_plot <- if (split_enabled) {
+	                    reference_plot &
+	                        theme(
+	                            plot.title = element_text(
+	                                face = "bold",
+	                                colour = app_palette["text"],
+	                                size = 13,
+	                                hjust = 0.5
+	                            )
+	                        )
+	                } else {
+	                    reference_plot &
+	                        labs(title = NULL) &
+	                        theme(plot.title = element_blank())
+	                }
+
+	                plot_list <- c(list(
+	                    wrap_titled_plot(
+	                        plot_obj = reference_plot,
+	                        title = metadata_column_label(reference_group_by)
+	                    )
+	                ), lapply(resolution$plot_features, function(feature_id) {
+	                    feature_plot <- scCustomize::FeaturePlot_scCustom(
+	                        seurat_object = plot_obj,
+	                        features = feature_id,
                         split.by = if (split_enabled) split_by else NULL,
                         pt.size = pt_size,
                         order = TRUE,
@@ -3104,14 +3202,18 @@ server <- function(input, output, session) {
                             theme(plot.title = element_blank())
                     }
 
-                    wrap_titled_plot(
-                        plot_obj = feature_plot,
-                        title = unname(resolution$label_map[feature_id])
-                    )
-                })
+	                    wrap_titled_plot(
+	                        plot_obj = feature_plot,
+	                        title = format_within_feature_panel_title(
+	                            title = unname(resolution$label_map[feature_id]),
+	                            source_species = source_species,
+	                            target_species = species_key
+	                        )
+	                    )
+	                }))
 
-                wrap_plots(plotlist = plot_list, ncol = feature_grid_cols)
-            })
+	                wrap_plots(plotlist = plot_list, ncol = feature_grid_cols)
+	            })
 
             violin_plot_obj <- reactive({
                 resolution <- expression_resolution()
@@ -3135,31 +3237,48 @@ server <- function(input, output, session) {
                         colors_use = rep(unname(app_palette["warm"]), n_groups),
                         pt.size = 0.12,
                         num_columns = 1,
-                        raster = TRUE
+                        raster = FALSE
                     )
+
+                    if (length(violin_plot$layers) >= 2) {
+                        violin_plot$layers[[2]]$aes_params$colour <- unname(app_palette["green_dark"])
+                        violin_plot$layers[[2]]$aes_params$alpha <- 0.42
+                        violin_plot$layers[[2]]$aes_params$size <- 0.34
+                    }
 
                     violin_plot <- violin_plot &
-                        labs(title = NULL, x = NULL, y = "Normalized expression") &
-                        app_plot_theme() +
+                        labs(
+                            title = unname(label_map[feature_id]),
+                            x = NULL,
+                            y = "Normalized expression"
+                        ) &
+                        app_plot_theme() &
                         theme(
-                            plot.title = element_blank(),
+                            plot.title = element_text(
+                                face = "bold",
+                                colour = app_palette["text"],
+                                size = 16,
+                                hjust = 0
+                            ),
                             legend.position = "none",
                             axis.text.x = element_text(angle = 35, hjust = 1),
-                            panel.grid.major.x = element_blank()
+                            panel.grid.major.x = element_blank(),
+                            plot.margin = margin(8, 14, 12, 10)
                         )
 
-                    wrap_titled_plot(
-                        plot_obj = violin_plot,
-                        title = unname(label_map[feature_id])
-                    )
+                    violin_plot
                 })
 
-                wrap_plots(plotlist = plot_list, ncol = 1)
+                if (length(plot_list) == 1) {
+                    plot_list[[1]]
+                } else {
+                    wrap_plots(plotlist = plot_list, ncol = 1)
+                }
             })
 
-            dot_plot_obj <- reactive({
-                resolution <- expression_resolution()
-                obj <- tab_object()
+	            dot_plot_obj <- reactive({
+	                resolution <- expression_resolution()
+	                obj <- tab_object()
 
                 validate(
                     need(
@@ -3168,36 +3287,73 @@ server <- function(input, output, session) {
                     )
                 )
 
-                label_map <- unname(resolution$label_map[resolution$plot_features])
+	                label_map <- unname(resolution$label_map[resolution$plot_features])
+	                cluster_feature_enabled <- length(resolution$plot_features) > 1
 
-	                plot_obj <- scCustomize::Clustered_DotPlot(
-	                    seurat_object = obj,
-	                    features = resolution$plot_features,
-                    group.by = tab_group_by(),
-                    cluster_feature = TRUE,
-                    cluster_ident = TRUE,
-                    flip = FALSE,
-                    row_names_side = "left",
-                    column_names_side = "bottom",
-                    show_ident_colors = FALSE,
-                    show_ident_legend = FALSE,
-                    show_annotation_name = FALSE,
-                    grid_color = NA,
-                    row_label_size = 11,
-                    column_label_size = 11,
-                    legend_position = "right",
-                    legend_label_size = 10,
-                    legend_title_size = 10,
-                    x_lab_rotate = TRUE,
-	                    raster = FALSE,
-	                    plot_km_elbow = FALSE
+	                dot_plot_precheck <- tryCatch(
+	                    scCustomize::DotPlot_scCustom(
+	                        seurat_object = obj,
+	                        features = resolution$plot_features,
+	                        group.by = tab_group_by()
+	                    )$data,
+	                    error = function(e) NULL
+	                )
+
+	                if (!is.null(dot_plot_precheck) && "avg.exp.scaled" %in% colnames(dot_plot_precheck)) {
+	                    has_nonfinite_feature <- any(
+	                        !is.finite(dot_plot_precheck$avg.exp.scaled) &
+	                            !is.na(dot_plot_precheck$features.plot)
+	                    )
+
+	                    if (isTRUE(has_nonfinite_feature)) {
+	                        cluster_feature_enabled <- FALSE
+	                    }
+	                }
+
+	                build_clustered_dot_plot <- function(cluster_feature) {
+	                    scCustomize::Clustered_DotPlot(
+	                        seurat_object = obj,
+	                        features = resolution$plot_features,
+	                        group.by = tab_group_by(),
+	                        cluster_feature = cluster_feature,
+	                        cluster_ident = TRUE,
+	                        flip = FALSE,
+	                        row_names_side = "left",
+	                        column_names_side = "bottom",
+	                        show_ident_colors = FALSE,
+	                        show_ident_legend = FALSE,
+	                        grid_color = NA,
+	                        row_label_size = 11,
+	                        column_label_size = 11,
+	                        legend_position = "right",
+	                        legend_label_size = 10,
+	                        legend_title_size = 10,
+	                        x_lab_rotate = TRUE,
+	                        raster = FALSE,
+	                        plot_km_elbow = FALSE
+	                    )
+	                }
+
+	                plot_obj <- tryCatch(
+	                    build_clustered_dot_plot(cluster_feature_enabled),
+	                    error = function(e) {
+	                        if (isTRUE(cluster_feature_enabled)) {
+	                            build_clustered_dot_plot(FALSE)
+	                        } else {
+	                            stop(e)
+	                        }
+	                    }
 	                )
 
 	                clustered_dot_radius_mm <- 3.2
+	                legend_dot_radius_mm <- 2
 	                heatmap_obj <- plot_obj@ht_list[[1]]
+	                percent_scale_max <- NA_real_
 
 	                if (!is.null(heatmap_obj@matrix_param$cell_fun)) {
 	                    cell_fun_env <- environment(heatmap_obj@matrix_param$cell_fun)
+	                    percent_mat <- get("percent_mat", envir = cell_fun_env)
+	                    percent_scale_max <- max(percent_mat, na.rm = TRUE)
 	                    heatmap_obj@matrix_param$cell_fun <- eval(
 	                        bquote(
 	                            function(j, i, x, y, w, h, fill) {
@@ -3211,7 +3367,7 @@ server <- function(input, output, session) {
 	                                grid::grid.circle(
 	                                    x = x,
 	                                    y = y,
-	                                    r = sqrt(percent_mat[i, j] / 100) * grid::unit(.(clustered_dot_radius_mm), "mm"),
+	                                    r = sqrt(percent_mat[i, j] / .(max(percent_scale_max, 1e-08))) * grid::unit(.(clustered_dot_radius_mm), "mm"),
 	                                    gp = grid::gpar(fill = col_fun(exp_mat[i, j]), col = NA)
 	                                )
 	                            }
@@ -3222,6 +3378,9 @@ server <- function(input, output, session) {
 
 	                if (!is.null(heatmap_obj@matrix_param$layer_fun)) {
 	                    layer_fun_env <- environment(heatmap_obj@matrix_param$layer_fun)
+	                    if (!is.finite(percent_scale_max) || percent_scale_max <= 0) {
+	                        percent_scale_max <- max(get("percent_mat", envir = layer_fun_env), na.rm = TRUE)
+	                    }
 	                    heatmap_obj@matrix_param$layer_fun <- eval(
 	                        bquote(
 	                            function(j, i, x, y, w, h, fill) {
@@ -3235,7 +3394,7 @@ server <- function(input, output, session) {
 	                                grid::grid.circle(
 	                                    x = x,
 	                                    y = y,
-	                                    r = sqrt(ComplexHeatmap::pindex(percent_mat, i, j) / 100) * grid::unit(.(clustered_dot_radius_mm), "mm"),
+	                                    r = sqrt(ComplexHeatmap::pindex(percent_mat, i, j) / .(max(percent_scale_max, 1e-08))) * grid::unit(.(clustered_dot_radius_mm), "mm"),
 	                                    gp = grid::gpar(
 	                                        fill = col_fun(ComplexHeatmap::pindex(exp_mat, i, j)),
 	                                        col = NA
@@ -3247,8 +3406,73 @@ server <- function(input, output, session) {
 	                    )
 	                }
 
-	                plot_obj@ht_list[[1]] <- heatmap_obj
-	                plot_obj@ht_list[[1]]@row_names_param$labels <- label_map
+	                if (!is.finite(percent_scale_max) || percent_scale_max <= 0) {
+	                    percent_scale_max <- 1
+	                }
+
+	                legend_breaks <- pretty(c(0, percent_scale_max), n = 4)
+	                legend_breaks <- legend_breaks[legend_breaks > 0 & legend_breaks < percent_scale_max]
+	                legend_breaks <- unique(c(legend_breaks, percent_scale_max))
+	                legend_breaks <- legend_breaks[legend_breaks > 0]
+
+	                if (!length(legend_breaks)) {
+	                    legend_breaks <- percent_scale_max
+	                }
+
+	                legend_digits <- if (percent_scale_max < 5) {
+	                    2L
+	                } else if (percent_scale_max < 20) {
+	                    1L
+	                } else {
+	                    0L
+	                }
+
+	                legend_labels <- sub(
+	                    "\\.?0+$",
+	                    "",
+	                    formatC(legend_breaks, format = "f", digits = legend_digits)
+	                )
+
+	                size_legend <- ComplexHeatmap::Legend(
+	                    title = "Percent Expressing",
+	                    at = legend_labels,
+	                    graphics = lapply(legend_breaks, function(value) {
+	                        force(value)
+	                        function(x, y, w, h) {
+	                            grid::grid.circle(
+	                                x = x,
+	                                y = y,
+	                                r = sqrt(value / percent_scale_max) * grid::unit(legend_dot_radius_mm, "mm"),
+	                                gp = grid::gpar(fill = "black", col = NA)
+	                            )
+	                        }
+	                    }),
+	                    labels_gp = grid::gpar(fontsize = 10),
+	                    title_gp = grid::gpar(fontsize = 10, fontface = "bold")
+	                )
+
+	                row_feature_ids <- rownames(heatmap_obj@matrix)
+	                if (is.null(row_feature_ids) || !length(row_feature_ids)) {
+	                    row_feature_ids <- resolution$plot_features
+	                }
+
+	                dot_plot_row_labels <- unname(resolution$label_map[row_feature_ids])
+	                missing_label_idx <- which(is.na(dot_plot_row_labels) | !nzchar(dot_plot_row_labels))
+	                if (length(missing_label_idx)) {
+	                    dot_plot_row_labels[missing_label_idx] <- row_feature_ids[missing_label_idx]
+	                }
+
+	                plot_obj@ht_list[[1]] <- set_heatmap_row_labels(
+	                    heatmap_obj,
+	                    dot_plot_row_labels
+	                )
+
+	                if (length(plot_obj@heatmap_legend_param$list)) {
+	                    plot_obj@heatmap_legend_param$list[[1]] <- size_legend
+	                } else {
+	                    plot_obj@heatmap_legend_param$list <- list(size_legend)
+	                }
+
 	                plot_obj
 	            })
 
@@ -3271,15 +3495,15 @@ server <- function(input, output, session) {
                 )
             }
 
-            output[[paste0(prefix, "_umap_plot")]] <- renderPlot(
-                {
-                    umap_plot_obj()
-                },
-                height = function() {
-                    feature_n <- tryCatch(length(expression_resolution()$plot_features), error = function(e) 0L)
-                    split_by <- tryCatch(tab_split_by(), error = function(e) "none")
-                    feature_cols <- if (identical(split_by, "none")) {
-                        within_feature_grid_cols(feature_n = feature_n, split_by = split_by)
+	            output[[paste0(prefix, "_umap_plot")]] <- renderPlot(
+	                {
+	                    umap_plot_obj()
+	                },
+	                height = function() {
+	                    feature_n <- tryCatch(length(expression_resolution()$plot_features) + 1L, error = function(e) 0L)
+	                    split_by <- tryCatch(tab_split_by(), error = function(e) "none")
+	                    feature_cols <- if (identical(split_by, "none")) {
+	                        within_feature_grid_cols(feature_n = feature_n, split_by = split_by)
                     } else {
                         4L
                     }
@@ -3393,7 +3617,7 @@ server <- function(input, output, session) {
                             yaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
                             zaxis = list(title = "", showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
                             camera = list(
-                                eye = list(x = 1.55, y = 1.35, z = 0.95)
+                                eye = list(x = 1.22, y = 1.06, z = 0.75)
                             )
                         )
                     ) %>%
@@ -3430,7 +3654,7 @@ server <- function(input, output, session) {
                 },
                 height = function() {
                     feature_n <- tryCatch(length(expression_resolution()$plot_features), error = function(e) 0L)
-                    max(420, 280 * feature_n)
+                    max(320, 250 * feature_n)
                 },
                 res = 110
             )
@@ -3445,16 +3669,16 @@ server <- function(input, output, session) {
                 res = 110
             )
 
-            output[[paste0("dl_", prefix, "_umap")]] <- downloadHandler(
-                filename = function() {
-                    paste0(prefix, "_umap.", get_ext())
-                },
-                content = function(file) {
-                    resolution <- expression_resolution()
-                    feature_n <- length(resolution$plot_features)
-                    split_by <- tab_split_by()
-                    feature_cols <- if (identical(split_by, "none")) {
-                        within_feature_grid_cols(feature_n = feature_n, split_by = split_by)
+	            output[[paste0("dl_", prefix, "_umap")]] <- downloadHandler(
+	                filename = function() {
+	                    paste0(prefix, "_umap.", get_ext())
+	                },
+	                content = function(file) {
+	                    resolution <- expression_resolution()
+	                    feature_n <- length(resolution$plot_features) + 1L
+	                    split_by <- tab_split_by()
+	                    feature_cols <- if (identical(split_by, "none")) {
+	                        within_feature_grid_cols(feature_n = feature_n, split_by = split_by)
                     } else {
                         4L
                     }
