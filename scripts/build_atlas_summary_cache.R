@@ -36,7 +36,19 @@ integration_choices <- c(
     "Seurat" = "Seurat"
 )
 
-cross_species_path <- "cross_species_integrated_datasets/Camex/clustered_dataset.rds"
+cross_integration_keys <- c("camex", "saturn")
+
+cross_integration_registry <- list(
+    camex = list(
+        label = "Camex",
+        path = "app_ready_integration/camex/clustered_dataset.rds"
+    ),
+    saturn = list(
+        label = "SATURN",
+        path = "app_ready_integration/saturn/clustered_dataset.rds"
+    )
+)
+
 atlas_summary_path <- "metadata/atlas_summary.tsv"
 
 compact_value_list <- function(values, limit = 4, empty_label = "NA") {
@@ -90,16 +102,16 @@ build_within_summary_row <- function(species_key, integration_method, obj) {
     )
 }
 
-build_cross_summary_row <- function(obj) {
+build_cross_summary_row <- function(cross_key, obj) {
     md <- obj@meta.data
     sample_col <- pick_sample_column(md)
     sample_values <- if (!is.na(sample_col)) md[[sample_col]] else character(0)
 
     data.frame(
         dataset_scope = "cross",
-        species_key = "cross",
-        integration_method = NA_character_,
-        integration_label = "Camex",
+        species_key = cross_key,
+        integration_method = cross_key,
+        integration_label = cross_integration_registry[[cross_key]]$label,
         cells = ncol(obj),
         genes = nrow(obj),
         sample_n = length(unique(sample_values[!is.na(sample_values) & nzchar(sample_values)])),
@@ -127,8 +139,17 @@ within_rows <- do.call(
     })
 )
 
-cross_row <- build_cross_summary_row(readRDS(cross_species_path))
-summary_df <- rbind(within_rows, cross_row)
+cross_rows <- do.call(
+    rbind,
+    lapply(cross_integration_keys, function(cross_key) {
+        build_cross_summary_row(
+            cross_key = cross_key,
+            obj = readRDS(cross_integration_registry[[cross_key]]$path)
+        )
+    })
+)
+
+summary_df <- rbind(within_rows, cross_rows)
 
 dir.create(dirname(atlas_summary_path), recursive = TRUE, showWarnings = FALSE)
 write.table(

@@ -604,6 +604,43 @@ h4,
     margin-bottom: 0;
 }
 
+.umap-plot-shell {
+    width: 100%;
+}
+
+.plotly-plot-shell,
+.plotly-plot-shell .plotly,
+.plotly-plot-shell .html-widget,
+.plotly-plot-shell .plot-container {
+    width: 100%;
+}
+
+.umap-plot-shell.is-narrow {
+    width: min(100%, 1020px);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.distribution-split-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    align-items: start;
+}
+
+.distribution-split-panel {
+    min-width: 0;
+}
+
+.distribution-view-title {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
 .plot-card-control {
     min-width: 250px;
 }
@@ -826,6 +863,10 @@ h4,
     }
 
     .summary-panel .dataset-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .distribution-split-layout {
         grid-template-columns: 1fr;
     }
 
