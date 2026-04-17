@@ -11,3 +11,7 @@ scripts/build_atlas_context_summary.py
 !annotations/*.tsv
 !metadata/**/*.tsv
 !orthogroups/*.tsv
+*.pdf
+*.tsv
+*.png
+*.csv

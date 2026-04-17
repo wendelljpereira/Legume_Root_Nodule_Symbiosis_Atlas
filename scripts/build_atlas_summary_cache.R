@@ -41,15 +41,32 @@ cross_integration_keys <- c("camex", "saturn")
 cross_integration_registry <- list(
     camex = list(
         label = "Camex",
-        path = "app_ready_integration/camex/clustered_dataset.rds"
+        path = "app_ready_integration/camex/clustered_dataset.rds",
+        slim_path = "app_ready_integration/camex/clustered_dataset_app_slim.rds"
     ),
     saturn = list(
         label = "SATURN",
-        path = "app_ready_integration/saturn/clustered_dataset.rds"
+        path = "app_ready_integration/saturn/clustered_dataset.rds",
+        slim_path = "app_ready_integration/saturn/clustered_dataset_app_slim.rds"
     )
 )
 
 atlas_summary_path <- "metadata/atlas_summary.tsv"
+
+pick_first_existing_path <- function(paths) {
+    existing_path <- paths[file.exists(paths)][1]
+
+    if (is.na(existing_path) || !length(existing_path)) {
+        return(paths[[1]])
+    }
+
+    existing_path
+}
+
+get_cross_dataset_path <- function(cross_key) {
+    cfg <- cross_integration_registry[[cross_key]]
+    pick_first_existing_path(c(cfg$slim_path, cfg$path))
+}
 
 compact_value_list <- function(values, limit = 4, empty_label = "NA") {
     values <- unique(trimws(as.character(values)))
@@ -144,7 +161,7 @@ cross_rows <- do.call(
     lapply(cross_integration_keys, function(cross_key) {
         build_cross_summary_row(
             cross_key = cross_key,
-            obj = readRDS(cross_integration_registry[[cross_key]]$path)
+            obj = readRDS(get_cross_dataset_path(cross_key))
         )
     })
 )

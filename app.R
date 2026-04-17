@@ -67,6 +67,7 @@ cross_integration_registry <- list(
         section_title = "Shared expression space across the three species",
         description = "This tab uses the Camex integration object. All queries resolve to shared Medicago-space features before plots are generated.",
         path = "app_ready_integration/camex/clustered_dataset.rds",
+        slim_path = "app_ready_integration/camex/clustered_dataset_app_slim.rds",
         feature_mode = "medicago_space",
         default_group_by = "species_cell_class",
         default_split_by = "species"
@@ -78,11 +79,27 @@ cross_integration_registry <- list(
         section_title = "Shared expression space across the three species",
         description = "This tab uses the SATURN integration object. Selected source genes resolve to ortholog features from all three species in the integrated SATURN feature space.",
         path = "app_ready_integration/saturn/clustered_dataset.rds",
+        slim_path = "app_ready_integration/saturn/clustered_dataset_app_slim.rds",
         feature_mode = "species_prefixed",
         default_group_by = "species",
         default_split_by = "species"
     )
 )
+
+pick_first_existing_path <- function(paths) {
+    existing_path <- paths[file.exists(paths)][1]
+
+    if (is.na(existing_path) || !length(existing_path)) {
+        return(paths[[1]])
+    }
+
+    existing_path
+}
+
+get_cross_dataset_path <- function(cross_key) {
+    cfg <- cross_integration_registry[[cross_key]]
+    pick_first_existing_path(c(cfg$slim_path, cfg$path))
+}
 
 species_choices <- c(
     "Medicago truncatula" = "medicago",
@@ -902,7 +919,7 @@ get_cross_object <- function(cross_key) {
     cache_key <- paste("cross::object", cross_key, sep = "::")
 
     cache_get(cache_key, function() {
-        readRDS(cross_integration_registry[[cross_key]]$path) %>%
+        readRDS(get_cross_dataset_path(cross_key)) %>%
             prepare_cross_object(cross_key)
     })
 }
@@ -942,30 +959,34 @@ get_cross_feature_lookup <- function(cross_key) {
         feature_mode <- cross_integration_registry[[cross_key]]$feature_mode
 
         if (identical(feature_mode, "medicago_space")) {
+            feature_ids <- rownames(get_cross_object(cross_key))
+            object_lookup <- tibble(
+                feature_id = feature_ids,
+                canonical_gene_id = canonicalize_gene_ids("medicago", feature_ids),
+                feature_species = "medicago"
+            ) %>%
+                filter(!is.na(feature_id) & nzchar(feature_id)) %>%
+                filter(!is.na(canonical_gene_id) & nzchar(canonical_gene_id)) %>%
+                distinct(feature_species, canonical_gene_id, feature_id)
+
             cached_lookup <- read_tsv_cache(cross_feature_lookup_path)
 
             if (!is.null(cached_lookup) &&
                 all(c("feature_id", "canonical_gene_id") %in% colnames(cached_lookup))) {
-                return(
-                    cached_lookup %>%
-                        select(feature_id, canonical_gene_id) %>%
-                        mutate(feature_species = "medicago") %>%
-                        filter(!is.na(feature_id) & nzchar(feature_id)) %>%
-                        filter(!is.na(canonical_gene_id) & nzchar(canonical_gene_id)) %>%
-                        distinct(feature_species, canonical_gene_id, feature_id)
-                )
+                cached_lookup <- cached_lookup %>%
+                    select(feature_id, canonical_gene_id) %>%
+                    mutate(feature_species = "medicago") %>%
+                    filter(!is.na(feature_id) & nzchar(feature_id)) %>%
+                    filter(!is.na(canonical_gene_id) & nzchar(canonical_gene_id)) %>%
+                    distinct(feature_species, canonical_gene_id, feature_id)
+
+                if (nrow(cached_lookup) == nrow(object_lookup) &&
+                    setequal(cached_lookup$feature_id, object_lookup$feature_id)) {
+                    return(cached_lookup)
+                }
             }
 
-            feature_ids <- rownames(get_cross_object(cross_key))
-
-            return(
-                tibble(
-                    feature_id = feature_ids,
-                    canonical_gene_id = canonicalize_gene_ids("medicago", feature_ids),
-                    feature_species = "medicago"
-                ) %>%
-                    distinct(feature_species, canonical_gene_id, feature_id)
-            )
+            return(object_lookup)
         }
 
         feature_ids <- rownames(get_cross_object(cross_key))
