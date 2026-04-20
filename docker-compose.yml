@@ -1,0 +1,19 @@
+services:
+  atlas:
+    build:
+      context: .
+    ports:
+      - "3838:3838"
+    environment:
+      ATLAS_ORTHOLOGS_PATH: ${ATLAS_ORTHOLOGS_PATH:-/srv/atlas/orthogroups/joint_orthogroups.tsv}
+      ATLAS_CELLTYPE_OVERRIDES_DIR: ${ATLAS_CELLTYPE_OVERRIDES_DIR:-/srv/atlas/celltype_overrides}
+      ATLAS_ACCESS_PASSWORD: ${ATLAS_ACCESS_PASSWORD:-}
+      ATLAS_VERSION: ${ATLAS_VERSION:-0.1.0-preview}
+      ATLAS_LAST_UPDATED: ${ATLAS_LAST_UPDATED:-2026-04-18}
+    volumes:
+      - ./within_species_integrated_datasets:/srv/atlas/within_species_integrated_datasets:ro
+      - ./app_ready_integration:/srv/atlas/app_ready_integration:ro
+      - ./orthogroups:/srv/atlas/orthogroups:ro
+      - ./annotations:/srv/atlas/annotations:ro
+      - ./metadata:/srv/atlas/metadata:ro
+      - ./celltype_overrides:/srv/atlas/celltype_overrides:ro

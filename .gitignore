@@ -15,3 +15,10 @@ scripts/build_atlas_context_summary.py
 *.tsv
 *.png
 *.csv
+.Rhistory
+Rplots.pdf
+*.rds.tmp
+.claude/launch.json
+.playwright-cli/
+scripts/profiling/**/*.html
+scripts/profiling/**/post_p1_profile_files/

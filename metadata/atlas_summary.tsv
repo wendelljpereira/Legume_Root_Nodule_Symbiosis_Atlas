@@ -1,9 +1,9 @@
 "dataset_scope"	"species_key"	"integration_method"	"integration_label"	"cells"	"genes"	"sample_n"	"group_label"	"group_n"	"group_preview"	"species_n"	"species_preview"	"time_n"	"time_preview"
-"within"	"medicago"	"ComBat_BBKNN"	"ComBat/BBKNN"	80004	37454	18							
-"within"	"medicago"	"Seurat"	"Seurat"	80004	37454	18							
-"within"	"glycine"	"ComBat_BBKNN"	"ComBat/BBKNN"	101258	44317	14							
-"within"	"glycine"	"Seurat"	"Seurat"	101258	44317	14							
-"within"	"lotus"	"ComBat_BBKNN"	"ComBat/BBKNN"	28622	25212	8							
-"within"	"lotus"	"Seurat"	"Seurat"	28622	25212	8							
-"cross"	"camex"	"camex"	"Camex"	209884	106983	40							
-"cross"	"saturn"	"saturn"	"SATURN"	209884	106983	40							
+"within"	"medicago"	"ComBat_BBKNN"	"ComBat/BBKNN"	80004	37454	18	"conditions"	7	"14d, Roots, 48h, 6h (+3 more)"	1	"Medicago truncatula"	7	"14d, Roots, 48h, 6h (+3 more)"
+"within"	"medicago"	"Seurat"	"Seurat"	80004	37454	18	"conditions"	7	"14d, Roots, 48h, 6h (+3 more)"	1	"Medicago truncatula"		
+"within"	"glycine"	"ComBat_BBKNN"	"ComBat/BBKNN"	101258	44317	14	"conditions"	6	"12dpi, roots, 15dpi, 21pdi (+2 more)"	1	"Glycine max"	6	"12dpi, roots, 15dpi, 21pdi (+2 more)"
+"within"	"glycine"	"Seurat"	"Seurat"	101258	44317	14	"conditions"	6	"12dpi, roots, 15dpi, 21pdi (+2 more)"	1	"Glycine max"		
+"within"	"lotus"	"ComBat_BBKNN"	"ComBat/BBKNN"	28622	25212	8	"conditions"	3	"5dpi, Roots, 10dpi"	1	"Lotus japonicus"	3	"5dpi, Roots, 10dpi"
+"within"	"lotus"	"Seurat"	"Seurat"	28622	25212	8	"conditions"	3	"5dpi, Roots, 10dpi"	1	"Lotus japonicus"		
+"cross"	"camex"	"camex"	"Camex"	209884	106983	40	"conditions"	12	"A17, sunn, LCO_timecourse, Cervantes_root_series (+8 more)"	3	"Medicago truncatula, Lotus japonicus, Glycine max"	15	"Roots, 24h, 48h, 96h (+11 more)"
+"cross"	"saturn"	"saturn"	"SATURN"	209884	106983	40	"conditions"	12	"root, nodule, large_nodule, root_or_root_nodule (+8 more)"	3	"Glycine max, Lotus japonicus, Medicago truncatula"	15	"roots, 28dpi, 21pdi, 15dpi (+11 more)"

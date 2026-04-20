@@ -10,6 +10,7 @@ script_arg <- commandArgs(trailingOnly = FALSE)
 script_path <- sub(script_flag, "", script_arg[grep(script_flag, script_arg)][1])
 project_root <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
 setwd(project_root)
+source("scripts/atlas_dataset_utils.R")
 
 within_species_keys <- c("medicago", "glycine", "lotus")
 
@@ -48,8 +49,14 @@ annotation_paths <- c(
 
 integration_methods <- c("ComBat_BBKNN", "Seurat")
 gene_catalog_cache_dir <- "metadata/gene_catalogs"
-cross_species_path <- "cross_species_integrated_datasets/Camex/clustered_dataset.rds"
+cross_species_path <- "app_ready_integration/camex/clustered_dataset.rds"
+cross_species_slim_path <- "app_ready_integration/camex/clustered_dataset_app_slim.rds"
 cross_feature_lookup_path <- "metadata/cross_feature_lookup.tsv"
+
+get_within_dataset_path <- function(species_key, integration_method) {
+    path <- species_registry[[species_key]]$within_paths[[integration_method]]
+    pick_first_existing_path(c(app_slim_path(path), path))
+}
 
 canonicalize_gene_ids <- function(species_key, ids) {
     ids <- as.character(ids)
@@ -130,7 +137,7 @@ read_gene_annotations <- function(species_key) {
 }
 
 build_gene_catalog <- function(species_key, integration_method) {
-    obj <- readRDS(species_registry[[species_key]]$within_paths[[integration_method]])
+    obj <- readRDS(get_within_dataset_path(species_key, integration_method))
     feature_ids <- rownames(obj)
     annotations <- read_gene_annotations(species_key)
 
@@ -161,23 +168,31 @@ build_gene_catalog <- function(species_key, integration_method) {
 
 dir.create(gene_catalog_cache_dir, recursive = TRUE, showWarnings = FALSE)
 
-for (species_key in within_species_keys) {
-    for (integration_method in integration_methods) {
-        catalog <- build_gene_catalog(species_key, integration_method)
-        out_path <- file.path(gene_catalog_cache_dir, paste0(species_key, "_", integration_method, ".tsv"))
-        write.table(
-            catalog,
-            file = out_path,
-            sep = "\t",
-            row.names = FALSE,
-            quote = TRUE,
-            na = ""
-        )
-        cat("Wrote", out_path, "\n")
-    }
+legacy_catalogs <- list.files(
+    gene_catalog_cache_dir,
+    pattern = "_(ComBat_BBKNN|Seurat)\\.tsv$",
+    full.names = TRUE
+)
+
+if (length(legacy_catalogs)) {
+    file.remove(legacy_catalogs)
 }
 
-cross_obj <- readRDS(cross_species_path)
+for (species_key in within_species_keys) {
+    catalog <- build_gene_catalog(species_key, integration_methods[[1]])
+    out_path <- file.path(gene_catalog_cache_dir, paste0(species_key, ".tsv"))
+    write.table(
+        catalog,
+        file = out_path,
+        sep = "\t",
+        row.names = FALSE,
+        quote = TRUE,
+        na = ""
+    )
+    cat("Wrote", out_path, "\n")
+}
+
+cross_obj <- readRDS(pick_first_existing_path(c(cross_species_slim_path, cross_species_path)))
 cross_lookup <- data.frame(
     feature_id = rownames(cross_obj),
     canonical_gene_id = canonicalize_gene_ids("medicago", rownames(cross_obj)),

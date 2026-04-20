@@ -7,6 +7,7 @@ script_arg <- commandArgs(trailingOnly = FALSE)
 script_path <- sub(script_flag, "", script_arg[grep(script_flag, script_arg)][1])
 project_root <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
 setwd(project_root)
+source("scripts/atlas_dataset_utils.R")
 
 within_species_keys <- c("medicago", "glycine", "lotus")
 
@@ -53,19 +54,14 @@ cross_integration_registry <- list(
 
 atlas_summary_path <- "metadata/atlas_summary.tsv"
 
-pick_first_existing_path <- function(paths) {
-    existing_path <- paths[file.exists(paths)][1]
-
-    if (is.na(existing_path) || !length(existing_path)) {
-        return(paths[[1]])
-    }
-
-    existing_path
-}
-
 get_cross_dataset_path <- function(cross_key) {
     cfg <- cross_integration_registry[[cross_key]]
     pick_first_existing_path(c(cfg$slim_path, cfg$path))
+}
+
+get_within_dataset_path <- function(species_key, integration_method) {
+    path <- species_registry[[species_key]]$within_paths[[integration_method]]
+    pick_first_existing_path(c(app_slim_path(path), path))
 }
 
 compact_value_list <- function(values, limit = 4, empty_label = "NA") {
@@ -95,10 +91,52 @@ pick_sample_column <- function(df) {
     pick_first_existing_col(df, c("sample_name", "sample", "Sample", "orig.ident"))
 }
 
+species_labels <- c(
+    medicago = "Medicago truncatula",
+    glycine = "Glycine max",
+    lotus = "Lotus japonicus"
+)
+
+build_metadata_axis_summary <- function(values, label, limit = 4) {
+    clean_values <- unique(trimws(as.character(values)))
+    clean_values <- clean_values[!is.na(clean_values) & nzchar(clean_values)]
+
+    list(
+        label = label,
+        n = length(clean_values),
+        preview = if (length(clean_values)) compact_value_list(clean_values, limit = limit) else NA_character_
+    )
+}
+
+pick_metadata_axis_summary <- function(df, candidates, limit = 4) {
+    for (candidate in candidates) {
+        column_name <- pick_first_existing_col(df, candidate$columns)
+        if (!is.na(column_name)) {
+            return(build_metadata_axis_summary(df[[column_name]], candidate$label, limit = limit))
+        }
+    }
+
+    list(label = NA_character_, n = NA_integer_, preview = NA_character_)
+}
+
 build_within_summary_row <- function(species_key, integration_method, obj) {
     md <- obj@meta.data
     sample_col <- pick_sample_column(md)
-    sample_values <- if (!is.na(sample_col)) md[[sample_col]] else character(0)
+    sample_values <- if (!is.na(sample_col)) as.character(md[[sample_col]]) else character(0)
+    group_summary <- pick_metadata_axis_summary(
+        md,
+        list(
+            list(columns = c("Group", "condition"), label = "conditions"),
+            list(columns = c("study"), label = "studies")
+        )
+    )
+    time_summary <- pick_metadata_axis_summary(
+        md,
+        list(
+            list(columns = c("time_point", "time", "Time"), label = "time points")
+        )
+    )
+    species_summary <- build_metadata_axis_summary(species_labels[[species_key]], label = "species", limit = 1)
 
     data.frame(
         dataset_scope = "within",
@@ -108,13 +146,13 @@ build_within_summary_row <- function(species_key, integration_method, obj) {
         cells = ncol(obj),
         genes = nrow(obj),
         sample_n = length(unique(sample_values[!is.na(sample_values) & nzchar(sample_values)])),
-        group_label = NA_character_,
-        group_n = NA_integer_,
-        group_preview = NA_character_,
-        species_n = NA_integer_,
-        species_preview = NA_character_,
-        time_n = NA_integer_,
-        time_preview = NA_character_,
+        group_label = group_summary$label,
+        group_n = group_summary$n,
+        group_preview = group_summary$preview,
+        species_n = species_summary$n,
+        species_preview = species_summary$preview,
+        time_n = time_summary$n,
+        time_preview = time_summary$preview,
         stringsAsFactors = FALSE
     )
 }
@@ -122,7 +160,28 @@ build_within_summary_row <- function(species_key, integration_method, obj) {
 build_cross_summary_row <- function(cross_key, obj) {
     md <- obj@meta.data
     sample_col <- pick_sample_column(md)
-    sample_values <- if (!is.na(sample_col)) md[[sample_col]] else character(0)
+    sample_values <- if (!is.na(sample_col)) as.character(md[[sample_col]]) else character(0)
+    group_summary <- pick_metadata_axis_summary(
+        md,
+        list(
+            list(columns = c("condition"), label = "conditions"),
+            list(columns = c("cell_class"), label = "cell classes"),
+            list(columns = c("saturn_ref_label", "saturn_label"), label = "reference labels"),
+            list(columns = c("study"), label = "studies")
+        )
+    )
+    species_summary <- pick_metadata_axis_summary(
+        md,
+        list(
+            list(columns = c("species"), label = "species")
+        )
+    )
+    time_summary <- pick_metadata_axis_summary(
+        md,
+        list(
+            list(columns = c("time_point", "time", "Time"), label = "time points")
+        )
+    )
 
     data.frame(
         dataset_scope = "cross",
@@ -132,13 +191,13 @@ build_cross_summary_row <- function(cross_key, obj) {
         cells = ncol(obj),
         genes = nrow(obj),
         sample_n = length(unique(sample_values[!is.na(sample_values) & nzchar(sample_values)])),
-        group_label = NA_character_,
-        group_n = NA_integer_,
-        group_preview = NA_character_,
-        species_n = NA_integer_,
-        species_preview = NA_character_,
-        time_n = NA_integer_,
-        time_preview = NA_character_,
+        group_label = group_summary$label,
+        group_n = group_summary$n,
+        group_preview = group_summary$preview,
+        species_n = species_summary$n,
+        species_preview = species_summary$preview,
+        time_n = time_summary$n,
+        time_preview = time_summary$preview,
         stringsAsFactors = FALSE
     )
 }
@@ -149,7 +208,7 @@ within_rows <- do.call(
         do.call(
             rbind,
             lapply(unname(integration_choices), function(integration_method) {
-                obj <- readRDS(species_registry[[species_key]]$within_paths[[integration_method]])
+                obj <- readRDS(get_within_dataset_path(species_key, integration_method))
                 build_within_summary_row(species_key, integration_method, obj)
             })
         )
