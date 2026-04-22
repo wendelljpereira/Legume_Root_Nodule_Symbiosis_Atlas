@@ -69,6 +69,8 @@ species_registry <- list(
 atlas_summary_path <- "metadata/atlas_summary.tsv"
 gene_catalog_cache_dir <- "metadata/gene_catalogs"
 cluster_markers_cache_dir <- "metadata/cluster_markers"
+ui_choice_cache_path <- "metadata/ui_choice_cache.tsv"
+ui_cluster_lookup_cache_path <- "metadata/ui_cluster_lookup_cache.tsv"
 within_three_d_reduction_name <- "umap3d"
 cross_feature_lookup_path <- "metadata/cross_feature_lookup.tsv"
 
@@ -2910,6 +2912,55 @@ cluster_markers_cache_candidates <- function(dataset_key, top_n = FALSE) {
     )
 }
 
+cluster_markers_split_cache_paths <- function(dataset_key, top_n = FALSE) {
+    if (!dir.exists(cluster_markers_cache_dir)) {
+        return(character(0))
+    }
+
+    paths <- list.files(
+        cluster_markers_cache_dir,
+        full.names = TRUE,
+        ignore.case = TRUE
+    )
+
+    if (!length(paths)) {
+        return(character(0))
+    }
+
+    expected_prefix <- paste0(dataset_key, "_markers_")
+    paths <- paths[startsWith(basename(paths), expected_prefix)]
+    paths <- paths[grepl("\\.(csv|tsv)$", basename(paths), ignore.case = TRUE)]
+
+    if (isTRUE(top_n)) {
+        paths <- paths[grepl("top10", basename(paths), ignore.case = TRUE)]
+    } else {
+        paths <- paths[!grepl("top10", basename(paths), ignore.case = TRUE)]
+    }
+
+    sort(paths)
+}
+
+marker_cluster_source_from_path <- function(path, dataset_key) {
+    file_name <- basename(path)
+
+    prefix <- paste0(dataset_key, "_markers_")
+    source_part <- if (startsWith(file_name, prefix)) {
+        substr(file_name, nchar(prefix) + 1L, nchar(file_name))
+    } else {
+        file_name
+    }
+
+    source_part <- sub("\\.(csv|tsv)$", "", source_part, ignore.case = TRUE)
+    source_part <- sub("_top10$", "", source_part, ignore.case = TRUE)
+    source_part <- sub("^_+", "", source_part)
+
+    if (!nzchar(source_part)) {
+        return("__idents__")
+    }
+
+    normalize_marker_cluster_source(source_part)
+}
+
 normalize_marker_cluster_source <- function(values) {
     values_chr <- trimws(as.character(values))
     values_key <- tolower(values_chr)
@@ -2929,7 +2980,7 @@ normalize_marker_cluster_source <- function(values) {
     )
 }
 
-normalize_cluster_markers_cache <- function(marker_tbl) {
+normalize_cluster_markers_cache <- function(marker_tbl, source_hint = NULL) {
     if (is.null(marker_tbl) || !nrow(marker_tbl)) {
         return(NULL)
     }
@@ -2942,8 +2993,8 @@ normalize_cluster_markers_cache <- function(marker_tbl) {
         matches[[1]]
     }
 
-    cluster_col <- pick_marker_col(c("cluster", "cluster_id", "ident", "identity"))
-    gene_col <- pick_marker_col(c("gene", "feature", "feature_id"))
+    cluster_col <- pick_marker_col(c("cluster", "Cluster", "cluster_id", "ident", "identity"))
+    gene_col <- pick_marker_col(c("gene", "Gene ID", "feature", "feature_id"))
     cluster_source_col <- pick_marker_col(c(
         "cluster_source",
         "clustering_level",
@@ -2953,10 +3004,10 @@ normalize_cluster_markers_cache <- function(marker_tbl) {
         "group_by",
         "cluster_by"
     ))
-    logfc_col <- pick_marker_col(c("avg_log2FC", "avg_logFC", "avg_log10FC"))
-    pct1_col <- pick_marker_col(c("pct.1", "pct1", "pct_1"))
-    pct2_col <- pick_marker_col(c("pct.2", "pct2", "pct_2"))
-    pval_adj_col <- pick_marker_col(c("p_val_adj", "padj", "p_adj"))
+    logfc_col <- pick_marker_col(c("avg_log2FC", "avg_logFC", "avg_log10FC", "Average log2(FoldChange)"))
+    pct1_col <- pick_marker_col(c("pct.1", "pct1", "pct_1", "% of cells expressing gene in cluster"))
+    pct2_col <- pick_marker_col(c("pct.2", "pct2", "pct_2", "% of cells expressing gene in remaining clusters"))
+    pval_adj_col <- pick_marker_col(c("p_val_adj", "padj", "p_adj", "Adjusted p-value"))
 
     required_cols <- c(cluster_col, gene_col, logfc_col, pct1_col, pct2_col, pval_adj_col)
 
@@ -2966,6 +3017,8 @@ normalize_cluster_markers_cache <- function(marker_tbl) {
 
     cluster_source_values <- if (!is.na(cluster_source_col)) {
         as.character(marker_tbl[[cluster_source_col]])
+    } else if (!is.null(source_hint) && length(source_hint) && !is.na(source_hint) && nzchar(source_hint)) {
+        rep(source_hint, nrow(marker_tbl))
     } else {
         rep("__idents__", nrow(marker_tbl))
     }
@@ -3057,14 +3110,35 @@ read_cluster_markers_cache <- function(dataset_key, top_n = FALSE) {
     cache_key <- paste("cluster_markers", dataset_key, if (isTRUE(top_n)) "top10" else "full", sep = "::")
 
     cache_get(cache_key, function() {
-        cache_path <- pick_first_existing_path(cluster_markers_cache_candidates(dataset_key, top_n = top_n))
+        direct_candidates <- cluster_markers_cache_candidates(dataset_key, top_n = top_n)
+        direct_path <- direct_candidates[file.exists(direct_candidates)][1]
 
-        if (!length(cache_path) || is.na(cache_path) || !nzchar(cache_path)) {
+        if (length(direct_path) && !is.na(direct_path) && nzchar(direct_path)) {
+            cached_markers <- read_delimited_cache(direct_path)
+            return(normalize_cluster_markers_cache(cached_markers))
+        }
+
+        split_paths <- cluster_markers_split_cache_paths(dataset_key, top_n = top_n)
+
+        if (!length(split_paths)) {
             return(NULL)
         }
 
-        cached_markers <- read_delimited_cache(cache_path)
-        normalize_cluster_markers_cache(cached_markers)
+        marker_tables <- lapply(split_paths, function(path) {
+            normalize_cluster_markers_cache(
+                read_delimited_cache(path),
+                source_hint = marker_cluster_source_from_path(path, dataset_key)
+            )
+        })
+
+        marker_tables <- Filter(function(tbl) !is.null(tbl) && nrow(tbl), marker_tables)
+
+        if (!length(marker_tables)) {
+            return(NULL)
+        }
+
+        bind_rows(marker_tables) %>%
+            distinct(cluster_source, cluster, gene, .keep_all = TRUE)
     })
 }
 
@@ -3122,6 +3196,121 @@ cluster_label_lookup <- function(obj, cluster_column = "__idents__") {
                 paste0(cluster_label, " [", cluster, "]"),
                 cluster_label
             )
+        )
+}
+
+read_ui_choice_cache <- function() {
+    cache_tbl <- read_tsv_cache(ui_choice_cache_path)
+
+    if (is.null(cache_tbl) ||
+        !all(c("dataset_key", "choice_family", "label", "value", "sort_order") %in% colnames(cache_tbl))) {
+        return(NULL)
+    }
+
+    cache_tbl %>%
+        transmute(
+            dataset_key = as.character(dataset_key),
+            choice_family = as.character(choice_family),
+            label = as.character(label),
+            value = as.character(value),
+            sort_order = suppressWarnings(as.integer(sort_order))
+        ) %>%
+        filter(
+            !is.na(dataset_key) & nzchar(dataset_key),
+            !is.na(choice_family) & nzchar(choice_family),
+            !is.na(label) & nzchar(label),
+            !is.na(value) & nzchar(value)
+        ) %>%
+        mutate(sort_order = ifelse(is.na(sort_order), row_number(), sort_order))
+}
+
+get_ui_choice_cache <- function() {
+    cache_get("ui::choice_cache", function() {
+        read_ui_choice_cache()
+    })
+}
+
+get_cached_ui_choices <- function(dataset_key, choice_family) {
+    cache_tbl <- get_ui_choice_cache()
+
+    if (is.null(cache_tbl) || !nrow(cache_tbl)) {
+        return(NULL)
+    }
+
+    rows <- cache_tbl %>%
+        filter(
+            .data$dataset_key == .env$dataset_key,
+            .data$choice_family == .env$choice_family
+        ) %>%
+        arrange(.data$sort_order, .data$label)
+
+    if (!nrow(rows)) {
+        return(NULL)
+    }
+
+    setNames(rows$value, rows$label)
+}
+
+read_ui_cluster_lookup_cache <- function() {
+    cache_tbl <- read_tsv_cache(ui_cluster_lookup_cache_path)
+
+    if (is.null(cache_tbl) ||
+        !all(c("dataset_key", "cluster_source", "cluster", "cluster_label", "choice_label", "sort_order") %in% colnames(cache_tbl))) {
+        return(NULL)
+    }
+
+    cache_tbl %>%
+        transmute(
+            dataset_key = as.character(dataset_key),
+            cluster_source = normalize_marker_cluster_source(cluster_source),
+            cluster = as.character(cluster),
+            cluster_label = as.character(cluster_label),
+            choice_label = as.character(choice_label),
+            sort_order = suppressWarnings(as.integer(sort_order))
+        ) %>%
+        filter(
+            !is.na(dataset_key) & nzchar(dataset_key),
+            !is.na(cluster_source) & nzchar(cluster_source),
+            !is.na(cluster) & nzchar(cluster)
+        ) %>%
+        mutate(
+            cluster_label = ifelse(is.na(cluster_label) | !nzchar(cluster_label), cluster, cluster_label),
+            choice_label = ifelse(is.na(choice_label) | !nzchar(choice_label), cluster_label, choice_label),
+            sort_order = ifelse(is.na(sort_order), row_number(), sort_order)
+        )
+}
+
+get_ui_cluster_lookup_cache <- function() {
+    cache_get("ui::cluster_lookup_cache", function() {
+        read_ui_cluster_lookup_cache()
+    })
+}
+
+get_cached_cluster_lookup <- function(dataset_key, cluster_source) {
+    cache_tbl <- get_ui_cluster_lookup_cache()
+    cluster_source <- normalize_marker_cluster_source(cluster_source)
+
+    if (is.null(cache_tbl) || !nrow(cache_tbl) ||
+        is.null(cluster_source) || !length(cluster_source) || is.na(cluster_source) || !nzchar(cluster_source)) {
+        return(NULL)
+    }
+
+    rows <- cache_tbl %>%
+        filter(
+            .data$dataset_key == .env$dataset_key,
+            .data$cluster_source == .env$cluster_source
+        ) %>%
+        arrange(.data$sort_order, .data$cluster)
+
+    if (!nrow(rows)) {
+        return(NULL)
+    }
+
+    rows %>%
+        transmute(
+            cluster = .data$cluster,
+            cluster_label = .data$cluster_label,
+            choice_label = .data$choice_label
         )
 }
 
@@ -3194,28 +3383,16 @@ summary_strip_tile <- function(label_tag, summary) {
 
 atlas_summary_cache_is_current <- function(summary_df) {
     required_cols <- c(
-        "sample_n",
-        "group_label", "group_n", "group_preview",
-        "species_n", "species_preview",
-        "time_n", "time_preview"
+        "dataset_scope",
+        "species_key",
+        "integration_method",
+        "cells",
+        "genes",
+        "sample_n"
     )
 
-    if (!nrow(summary_df) || !all(required_cols %in% colnames(summary_df))) {
-        return(FALSE)
-    }
-
-    valid_preview <- function(n_col, preview_col) {
-        counts <- suppressWarnings(as.numeric(summary_df[[n_col]]))
-        previews <- trimws(as.character(summary_df[[preview_col]] %||% ""))
-        length(counts) == nrow(summary_df) &&
-            length(previews) == nrow(summary_df) &&
-            all((!is.na(counts) & counts > 0) | !nzchar(previews)) &&
-            any(!is.na(counts) & counts > 0 & nzchar(previews))
-    }
-
-    valid_preview("group_n", "group_preview") &&
-        valid_preview("species_n", "species_preview") &&
-        valid_preview("time_n", "time_preview")
+    nrow(summary_df) > 0 &&
+        all(required_cols %in% colnames(summary_df))
 }
 
 build_within_dataset_summary_row <- function(species_key, integration_method, obj) {
@@ -5176,6 +5353,7 @@ ui <- fluidPage(
                     }
                     window.__atlasClientInitialized = true;
                     window.__atlasPermalinkReportTimer = null;
+                    window.__atlasPermalinkQuery = window.location.search || '';
                     window.__atlasRestoringPanelId = null;
                     window.__atlasBusyButtons = {};
 
@@ -5227,6 +5405,10 @@ ui <- fluidPage(
 
                             var panelId = atlasVisiblePermalinkPanel();
                             var url = new URL(window.location.href);
+
+                            if (window.__atlasPermalinkQuery && window.__atlasPermalinkQuery.length) {
+                                url.search = window.__atlasPermalinkQuery;
+                            }
 
                             if (panelId) {
                                 url.searchParams.set('panel', panelId);
@@ -5386,6 +5568,9 @@ ui <- fluidPage(
                             delete window.__atlasBusyButtons[msg.button_id];
                         }
                     });
+                    Shiny.addCustomMessageHandler('atlas_set_permalink', function(msg) {
+                        window.__atlasPermalinkQuery = (msg && msg.query) ? msg.query : '';
+                    });
                 }
 
                 if (document.readyState === 'loading') {
@@ -5447,7 +5632,7 @@ ui <- fluidPage(
             ),
             fluidRow(
                 column(
-                    width = 4,
+                    width = 3,
                     div(
                         class = "option-group source-species-picker",
                         shinyWidgets::pickerInput(
@@ -5460,7 +5645,7 @@ ui <- fluidPage(
                     )
                 ),
                 column(
-                    width = 6,
+                    width = 7,
                     div(
                         class = "option-group",
                         selectizeInput(
@@ -5514,7 +5699,7 @@ ui <- fluidPage(
                             inputId = "dl_format",
                             label = "Download format",
                             choices = c("SVG", "PNG", "PDF"),
-                            selected = "PDF"
+                            selected = "PNG"
                         ),
                         selectInput(
                             inputId = "figure_preset",
@@ -5525,12 +5710,6 @@ ui <- fluidPage(
                                 "Publication" = "publication"
                             ),
                             selected = "publication"
-                        ),
-                        downloadButton(
-                            outputId = "dl_composite",
-                            label = "Composite PDF",
-                            icon = icon("file-pdf"),
-                            class = "btn btn-default btn-sm composite-dl-btn"
                         ),
                         tags$div(
                             class = "option-toggle",
@@ -6096,7 +6275,9 @@ server <- function(input, output, session) {
 
     observe({
         if (isTRUE(url_restoring())) return()
-        updateQueryString(build_query_string(), mode = "replace")
+        session$sendCustomMessage("atlas_set_permalink", list(
+            query = build_query_string()
+        ))
     })
 
     observe({
@@ -6498,7 +6679,7 @@ server <- function(input, output, session) {
     })
 
     get_ext <- function() {
-        tolower(input$dl_format %||% "svg")
+        tolower(input$dl_format %||% "png")
     }
 
     figure_preset <- reactive({
@@ -6640,117 +6821,20 @@ server <- function(input, output, session) {
         )
     }
 
-    output$dl_composite <- downloadHandler(
-        filename = function() {
-            sprintf("nodule_atlas_composite_%s.pdf", format(Sys.time(), "%Y%m%d_%H%M"))
-        },
-        content = function(file) {
-            source_species <- input$source_species %||% "medicago"
-            source_genes <- selected_source_genes()
-
-            if (!length(source_genes)) {
-                pdf(file = file, width = 8.5, height = 4)
-                plot.new()
-                title(main = "No genes selected — apply a gene panel before exporting.")
-                dev.off()
-                return()
-            }
-
-            cb <- isTRUE(input$colorblind_safe)
-
-            panels_per_species <- lapply(within_species_keys, function(sp) {
-                integration_method <- current_species_integration(sp)
-                resolution <- tryCatch(
-                    resolve_target_mapping(
-                        source_species = source_species,
-                        source_genes = source_genes,
-                        target_species = sp,
-                        integration_method = integration_method,
-                        cross_space = FALSE
-                    ),
-                    error = function(e) NULL
-                )
-                if (is.null(resolution) || !length(resolution$plot_features)) return(NULL)
-
-                obj <- tryCatch(get_within_object(sp, integration_method), error = function(e) NULL)
-                if (is.null(obj)) return(NULL)
-
-                plots <- lapply(resolution$plot_features, function(feature_id) {
-                    p <- tryCatch(
-                        emphasized_feature_plot(
-                            obj = obj,
-                            feature_id = feature_id,
-                            colorblind_safe = cb
-                        ) +
-                            app_plot_theme() +
-                            labs(
-                                title = sprintf(
-                                    "%s — %s",
-                                    species_registry[[sp]]$label,
-                                    unname(resolution$label_map[feature_id]) %||% feature_id
-                                ),
-                                color = NULL
-                            ) +
-                            theme(
-                                axis.title = element_blank(),
-                                axis.text = element_blank(),
-                                axis.ticks = element_blank(),
-                                plot.title = element_text(face = "bold", size = 11)
-                            ),
-                        error = function(e) NULL
-                    )
-                    p
-                })
-                plots <- Filter(Negate(is.null), plots)
-                if (!length(plots)) return(NULL)
-                plots
-            })
-
-            all_panels <- unlist(panels_per_species, recursive = FALSE)
-            all_panels <- Filter(Negate(is.null), all_panels)
-
-            if (!length(all_panels)) {
-                pdf(file = file, width = 8.5, height = 4)
-                plot.new()
-                title(main = "No panels could be generated for the current selection.")
-                dev.off()
-                return()
-            }
-
-            ncol <- min(length(source_genes), 3L)
-            if (ncol < 1L) ncol <- 1L
-            composite <- patchwork::wrap_plots(all_panels, ncol = ncol)
-            composite <- add_plot_export_provenance(
-                composite,
-                tab_label = "Composite atlas export",
-                integration_label = "Cross-atlas composite",
-                extra = list(atlas_export_type = "composite_pdf")
-            )
-            composite <- apply_export_figure_preset(composite)
-
-            page_width <- max(7, ncol * 3.4)
-            nrow <- ceiling(length(all_panels) / ncol)
-            page_height <- max(5, nrow * 3.0)
-            preset_cfg <- figure_preset_config(figure_preset())
-
-            ggsave(
-                filename = file,
-                plot = composite,
-                device = "pdf",
-                width = page_width * preset_cfg$width_scale,
-                height = page_height * preset_cfg$height_scale,
-                limitsize = FALSE
-            )
-        }
-    )
-
     register_species_tab <- function(species_key) {
         local({
             prefix <- species_key
             tab_label <- species_label(species_key)
             clustering_columns <- distribution_cluster_columns
+            tab_dataset_key <- reactive({
+                paste(species_key, current_species_integration(species_key), sep = "_")
+            })
+            tab_is_active <- reactive({
+                identical(input$main_tabs %||% "overview", species_key)
+            })
 
             tab_object <- reactive({
+                req(tab_is_active())
                 get_within_object(
                     species_key,
                     current_species_integration(species_key)
@@ -6758,6 +6842,7 @@ server <- function(input, output, session) {
             })
 
             tab_resolution <- reactive({
+                req(tab_is_active())
                 resolve_target_mapping(
                     source_species = input$source_species %||% "medicago",
                     source_genes = selected_source_genes(),
@@ -6789,10 +6874,22 @@ server <- function(input, output, session) {
                 tab_resolution()
             })
 
-            tab_group_choices <- reactive(within_group_choices(tab_object()))
-            tab_distribution_split_choices <- reactive(within_distribution_split_choices(tab_object()))
-            tab_feature_split_choices <- reactive(within_feature_split_choices(tab_object()))
-            tab_composition_choices <- reactive(within_composition_choices(tab_object()))
+            tab_group_choices <- reactive({
+                get_cached_ui_choices(tab_dataset_key(), "within_group") %||%
+                    within_group_choices(tab_object())
+            })
+            tab_distribution_split_choices <- reactive({
+                get_cached_ui_choices(tab_dataset_key(), "within_distribution_split") %||%
+                    within_distribution_split_choices(tab_object())
+            })
+            tab_feature_split_choices <- reactive({
+                get_cached_ui_choices(tab_dataset_key(), "within_feature_split") %||%
+                    within_feature_split_choices(tab_object())
+            })
+            tab_composition_choices <- reactive({
+                get_cached_ui_choices(tab_dataset_key(), "within_composition") %||%
+                    within_composition_choices(tab_object())
+            })
 
             output[[paste0(prefix, "_distribution_group_by_ui")]] <- renderUI({
                 choices <- tab_group_choices()
@@ -6992,7 +7089,7 @@ server <- function(input, output, session) {
             })
 
             tab_composition_cluster_by <- reactive({
-                available_clusters <- clustering_columns[clustering_columns %in% colnames(tab_object()@meta.data)]
+                available_clusters <- clustering_columns[clustering_columns %in% unname(tab_group_choices())]
                 preferred_cluster <- tab_distribution_group_by()
 
                 if (length(preferred_cluster) && preferred_cluster %in% available_clusters) {
@@ -7075,12 +7172,8 @@ server <- function(input, output, session) {
                 div(class = "matrix-export-hints", tagList(hint_lines))
             })
 
-            tab_marker_dataset_key <- reactive({
-                paste(species_key, current_species_integration(species_key), sep = "_")
-            })
-
             tab_markers_full <- reactive({
-                read_cluster_markers_cache(tab_marker_dataset_key(), top_n = FALSE)
+                read_cluster_markers_cache(tab_dataset_key(), top_n = FALSE)
             })
 
             tab_marker_source <- reactive({
@@ -7104,7 +7197,8 @@ server <- function(input, output, session) {
             })
 
             tab_marker_lookup <- reactive({
-                cluster_label_lookup(tab_object(), tab_marker_source())
+                get_cached_cluster_lookup(tab_dataset_key(), tab_marker_source()) %||%
+                    cluster_label_lookup(tab_object(), tab_marker_source())
             })
 
             tab_marker_choices <- reactive({
@@ -7312,6 +7406,7 @@ server <- function(input, output, session) {
             })
 
             observeEvent(input[[paste0(prefix, "_add_markers")]], {
+                button_id <- paste0(prefix, "_add_markers")
                 marker_tbl <- tab_marker_table_raw() %>%
                     slice_head(n = tab_marker_top_n())
 
@@ -7326,9 +7421,18 @@ server <- function(input, output, session) {
                     )
                 )
                 session$sendCustomMessage("atlas_button_busy", list(
-                    button_id = paste0(prefix, "_add_markers"),
+                    button_id = button_id,
                     label = "Adding..."
                 ))
+                on.exit(
+                    session$onFlushed(function() {
+                        session$sendCustomMessage("atlas_button_busy", list(
+                            button_id = button_id,
+                            busy = FALSE
+                        ))
+                    }, once = TRUE),
+                    add = TRUE
+                )
                 candidate_genes <- if (identical(species_key, source_species)) {
                     marker_tbl$gene
                 } else {
@@ -8606,12 +8710,17 @@ server <- function(input, output, session) {
         local({
             integration_cfg <- cross_integration_registry[[cross_key]]
             prefix <- paste0("cross_", cross_key)
+            cross_tab_is_active <- reactive({
+                identical(input$main_tabs %||% "overview", prefix)
+            })
 
             cross_object <- reactive({
+                req(cross_tab_is_active())
                 get_cross_object(cross_key)
             })
 
             cross_resolution <- reactive({
+                req(cross_tab_is_active())
                 resolve_cross_integration_mapping(
                     source_species = input$source_species %||% "medicago",
                     source_genes = selected_source_genes(),
@@ -8624,8 +8733,23 @@ server <- function(input, output, session) {
                 cache = "app"
             )
 
+            cross_group_choices_cached <- reactive({
+                get_cached_ui_choices(cross_key, "cross_group") %||%
+                    cross_group_choices(cross_object())
+            })
+
+            cross_distribution_group_choices_cached <- reactive({
+                get_cached_ui_choices(cross_key, "cross_distribution_group") %||%
+                    cross_distribution_group_choices(cross_object(), cross_key)
+            })
+
+            cross_composition_choices_cached <- reactive({
+                get_cached_ui_choices(cross_key, "cross_composition") %||%
+                    cross_composition_choices(cross_object())
+            })
+
             output[[paste0(prefix, "_group_by_ui")]] <- renderUI({
-                choices <- cross_group_choices(cross_object())
+                choices <- cross_group_choices_cached()
 
                 selectInput(
                     inputId = paste0(prefix, "_group_by"),
@@ -8642,7 +8766,7 @@ server <- function(input, output, session) {
             cross_group_by <- reactive({
                 resolve_choice(
                     input[[paste0(prefix, "_group_by")]],
-                    cross_group_choices(cross_object()),
+                    cross_group_choices_cached(),
                     default = integration_cfg$default_group_by
                 )
             })
@@ -8650,13 +8774,13 @@ server <- function(input, output, session) {
             cross_dist_group_by <- reactive({
                 resolve_choice(
                     input[[paste0(prefix, "_dist_group_by")]],
-                    cross_distribution_group_choices(cross_object(), cross_key),
+                    cross_distribution_group_choices_cached(),
                     default = integration_cfg$default_group_by
                 )
             })
 
             output[[paste0(prefix, "_dist_group_by_ui")]] <- renderUI({
-                choices <- cross_distribution_group_choices(cross_object(), cross_key)
+                choices <- cross_distribution_group_choices_cached()
                 selectInput(
                     inputId = paste0(prefix, "_dist_group_by"),
                     label = "Color cells by",
@@ -8670,7 +8794,7 @@ server <- function(input, output, session) {
             })
 
             output[[paste0(prefix, "_composition_by_ui")]] <- renderUI({
-                choices <- cross_composition_choices(cross_object())
+                choices <- cross_composition_choices_cached()
                 if (!length(choices)) return(NULL)
                 selectInput(
                     inputId = paste0(prefix, "_composition_by"),
@@ -9853,7 +9977,7 @@ server <- function(input, output, session) {
 
             # ── Cluster composition ─────────────────────────────────────────
             cross_composition_by <- reactive({
-                choices <- cross_composition_choices(cross_object())
+                choices <- cross_composition_choices_cached()
                 resolve_choice(
                     input[[paste0(prefix, "_composition_by")]],
                     choices,
@@ -9863,17 +9987,15 @@ server <- function(input, output, session) {
 
             cross_composition_cluster_by <- reactive({
                 clustering_cols <- c("Rank_1st", "Rank_2nd", "Rank_3rd", "cluster_label", "species_cell_class")
-                available <- clustering_cols[clustering_cols %in% colnames(cross_object()@meta.data)]
+                available <- clustering_cols[clustering_cols %in% unname(cross_group_choices_cached())]
                 preferred <- cross_dist_group_by()
                 if (length(preferred) && preferred %in% available) return(preferred)
                 if (length(available)) return(available[[1]])
                 NA_character_
             })
 
-            cross_marker_dataset_key <- reactive(cross_key)
-
             cross_markers_full <- reactive({
-                read_cluster_markers_cache(cross_marker_dataset_key(), top_n = FALSE)
+                read_cluster_markers_cache(cross_key, top_n = FALSE)
             })
 
             cross_marker_source <- reactive({
@@ -9898,7 +10020,8 @@ server <- function(input, output, session) {
             })
 
             cross_marker_lookup <- reactive({
-                cluster_label_lookup(cross_object(), cross_marker_source())
+                get_cached_cluster_lookup(cross_key, cross_marker_source()) %||%
+                    cluster_label_lookup(cross_object(), cross_marker_source())
             })
 
             cross_marker_choices <- reactive({
@@ -10097,6 +10220,7 @@ server <- function(input, output, session) {
             })
 
             observeEvent(input[[paste0(prefix, "_add_markers")]], {
+                button_id <- paste0(prefix, "_add_markers")
                 marker_tbl <- cross_marker_table_raw() %>%
                     slice_head(n = cross_marker_top_n())
 
@@ -10112,9 +10236,18 @@ server <- function(input, output, session) {
                     )
                 )
                 session$sendCustomMessage("atlas_button_busy", list(
-                    button_id = paste0(prefix, "_add_markers"),
+                    button_id = button_id,
                     label = "Adding..."
                 ))
+                on.exit(
+                    session$onFlushed(function() {
+                        session$sendCustomMessage("atlas_button_busy", list(
+                            button_id = button_id,
+                            busy = FALSE
+                        ))
+                    }, once = TRUE),
+                    add = TRUE
+                )
                 candidate_genes <- map_cross_marker_features_to_source_genes(
                     cross_key = cross_key,
                     feature_ids = marker_tbl$gene,

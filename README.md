@@ -102,7 +102,17 @@ cluster_id,label
 
 ## Before deploying
 
-Run the slim-cache builders and smoke test from the main project directory:
+After updating the underlying datasets, refresh the derived metadata caches from
+the main project directory with:
+
+```bash
+Rscript scripts/refresh_app_metadata.R
+```
+
+Use `Rscript scripts/refresh_app_metadata.R --check-only` to see whether any
+managed cache is stale without rewriting files.
+
+For a full release rebuild, run the slim-cache builders and smoke test:
 
 ```bash
 Rscript scripts/build_within_app_slim.R
@@ -110,6 +120,7 @@ Rscript scripts/build_cross_app_slim.R
 Rscript scripts/build_gene_catalog_cache.R
 Rscript scripts/build_cluster_markers_cache.R
 Rscript scripts/build_atlas_summary_cache.R
+Rscript scripts/build_startup_ui_cache.R
 Rscript scripts/smoke_test.R
 ```
 

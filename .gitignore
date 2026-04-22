@@ -22,3 +22,6 @@ Rplots.pdf
 .playwright-cli/
 scripts/profiling/**/*.html
 scripts/profiling/**/post_p1_profile_files/
+.claude/worktrees/suspicious-knuth-3e65ee
+CLAUDE.md
+IMPROVEMENT_PLAN.md

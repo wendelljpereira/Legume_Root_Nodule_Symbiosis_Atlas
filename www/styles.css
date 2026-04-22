@@ -375,7 +375,7 @@ h4,
 }
 
 .hero-text {
-    max-width: 760px;
+    max-width: 100%;
     margin-bottom: 0;
     font-size: 15px;
 }
@@ -1386,20 +1386,6 @@ label,
 
 .gene-import-btn:hover,
 .gene-import-btn:focus-visible {
-    border-color: var(--accent);
-    color: var(--accent-dark);
-}
-
-.composite-dl-btn {
-    margin-top: 10px;
-    width: 100%;
-    border: 1px solid var(--border-strong);
-    background: #ffffff;
-    color: var(--text);
-}
-
-.composite-dl-btn:hover,
-.composite-dl-btn:focus-visible {
     border-color: var(--accent);
     color: var(--accent-dark);
 }
