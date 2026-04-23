@@ -6,10 +6,12 @@ script_path <- sub(script_flag, "", script_arg[grep(script_flag, script_arg)][1]
 project_root <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
 setwd(project_root)
 source("scripts/atlas_dataset_utils.R")
+source("R/atlas_annotations.R")
 
 args <- commandArgs(trailingOnly = TRUE)
 force_refresh <- "--force" %in% args
 check_only <- "--check-only" %in% args
+fail_on_stale <- "--fail-on-stale" %in% args
 
 within_species_keys <- c("medicago", "glycine", "lotus")
 integration_methods <- c("ComBat_BBKNN", "Seurat")
@@ -51,6 +53,16 @@ annotation_paths <- c(
     glycine = "annotations/glycine_gene_annotations.tsv",
     lotus = "annotations/lotus_gene_annotations.tsv"
 )
+
+cluster_annotation_paths <- if (dir.exists(atlas_cluster_annotations_dir())) {
+    list.files(
+        atlas_cluster_annotations_dir(),
+        pattern = "\\.(csv|tsv)$",
+        full.names = TRUE
+    )
+} else {
+    character(0)
+}
 
 resolved_within_paths <- unlist(lapply(within_species_keys, function(species_key) {
     vapply(integration_methods, function(integration_method) {
@@ -129,8 +141,10 @@ builder_specs <- list(
         dependencies = c(
             resolved_within_paths,
             resolved_cross_paths,
+            cluster_annotation_paths,
             "scripts/build_startup_ui_cache.R",
-            "scripts/atlas_dataset_utils.R"
+            "scripts/atlas_dataset_utils.R",
+            "R/atlas_annotations.R"
         )
     )
 )
@@ -192,6 +206,9 @@ if (force_refresh) {
 if (check_only) {
     cat("Check-only mode enabled: no files will be regenerated.\n")
 }
+if (check_only && fail_on_stale) {
+    cat("Fail-on-stale mode enabled: stale caches will return a non-zero exit code.\n")
+}
 
 results <- lapply(builder_specs, function(spec) {
     refresh_check <- builder_needs_refresh(spec)
@@ -232,6 +249,9 @@ if (any(failed)) {
 
 if (check_only && any(result_tbl$status == "stale")) {
     cat("\nSome caches are stale. Re-run without --check-only to rebuild them.\n")
+    if (fail_on_stale) {
+        quit(status = 1L)
+    }
 } else if (any(result_tbl$status == "rebuilt")) {
     cat("\nAll stale caches were refreshed.\n")
 } else {

@@ -6,6 +6,7 @@ services:
       - "3838:3838"
     environment:
       ATLAS_ORTHOLOGS_PATH: ${ATLAS_ORTHOLOGS_PATH:-/srv/atlas/orthogroups/joint_orthogroups.tsv}
+      ATLAS_CLUSTER_ANNOTATIONS_DIR: ${ATLAS_CLUSTER_ANNOTATIONS_DIR:-/srv/atlas/annotations/cluster_annotations}
       ATLAS_CELLTYPE_OVERRIDES_DIR: ${ATLAS_CELLTYPE_OVERRIDES_DIR:-/srv/atlas/celltype_overrides}
       ATLAS_ACCESS_PASSWORD: ${ATLAS_ACCESS_PASSWORD:-}
       ATLAS_VERSION: ${ATLAS_VERSION:-0.1.0-preview}

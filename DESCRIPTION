@@ -1,0 +1,32 @@
+Package: LegumeRootNoduleSymbiosisAtlas
+Title: Legume Root Nodule Symbiosis Atlas Shiny App
+Version: 0.1.0.9000
+Authors@R: person("Wendell", "Pereira", role = c("aut", "cre"), email = "wendelljpereira@gmail.com")
+Description: A Shiny explorer for cross-species single-cell root nodule symbiosis datasets.
+License: file LICENSE
+Encoding: UTF-8
+Imports:
+    ComplexHeatmap,
+    DT,
+    Matrix,
+    Seurat,
+    dplyr,
+    ggplot2,
+    patchwork,
+    plotly,
+    purrr,
+    rlang,
+    scales,
+    scCustomize,
+    shiny,
+    shinyWidgets,
+    svglite,
+    tibble,
+    tidyr,
+    uwot,
+    viridisLite
+Suggests:
+    renv,
+    testthat (>= 3.0.0),
+    shinytest2
+Config/testthat/edition: 3

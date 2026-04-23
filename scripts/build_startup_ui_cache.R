@@ -11,10 +11,13 @@ script_path <- sub(script_flag, "", script_arg[grep(script_flag, script_arg)][1]
 project_root <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
 setwd(project_root)
 source("scripts/atlas_dataset_utils.R")
+source("R/atlas_annotations.R")
 
 within_species_keys <- c("medicago", "glycine", "lotus")
 integration_methods <- c("ComBat_BBKNN", "Seurat")
 distribution_cluster_columns <- c("Rank_1st", "Rank_2nd", "Rank_3rd", "Rank_4th", "Rank_5th", "cluster_label")
+cluster_annotations_dir <- atlas_cluster_annotations_dir()
+celltype_overrides_dir <- atlas_legacy_celltype_overrides_dir()
 
 species_registry <- list(
     medicago = list(
@@ -137,11 +140,17 @@ within_group_choices_local <- function(obj) {
         }
     }
 
+    maybe_add("Clustering opt 1 label", "Rank_1st_label")
+    maybe_add("Clustering opt 2 label", "Rank_2nd_label")
+    maybe_add("Clustering opt 3 label", "Rank_3rd_label")
+    maybe_add("Clustering opt 4 label", "Rank_4th_label")
+    maybe_add("Clustering opt 5 label", "Rank_5th_label")
     maybe_add("Clustering opt 1", "Rank_1st")
     maybe_add("Clustering opt 2", "Rank_2nd")
     maybe_add("Clustering opt 3", "Rank_3rd")
     maybe_add("Clustering opt 4", "Rank_4th")
     maybe_add("Clustering opt 5", "Rank_5th")
+    maybe_add("Cluster", "cluster_label")
     maybe_add("Condition", "Group")
     maybe_add("Sample", "Sample")
     choices
@@ -221,6 +230,10 @@ cross_group_choices_local <- function(obj) {
     maybe_add("SATURN label", "saturn_label")
     maybe_add("SATURN ref label", "saturn_ref_label")
     maybe_add("Clustering opt 1 label", "Rank_1st_label")
+    maybe_add("Clustering opt 2 label", "Rank_2nd_label")
+    maybe_add("Clustering opt 3 label", "Rank_3rd_label")
+    maybe_add("Clustering opt 4 label", "Rank_4th_label")
+    maybe_add("Clustering opt 5 label", "Rank_5th_label")
     maybe_add("Species", "species")
     maybe_add("Cluster", "cluster_label")
     maybe_add("Clustering opt 1", "Rank_1st")
@@ -246,6 +259,11 @@ cross_distribution_group_choices_local <- function(obj) {
 
     maybe_add("Time point", "time_point")
     maybe_add("Species", "species")
+    maybe_add("Clustering opt 1 label", "Rank_1st_label")
+    maybe_add("Clustering opt 2 label", "Rank_2nd_label")
+    maybe_add("Clustering opt 3 label", "Rank_3rd_label")
+    maybe_add("Clustering opt 4 label", "Rank_4th_label")
+    maybe_add("Clustering opt 5 label", "Rank_5th_label")
     maybe_add("Clustering opt 1", "Rank_1st")
     maybe_add("Clustering opt 2", "Rank_2nd")
     maybe_add("Clustering opt 3", "Rank_3rd")
@@ -305,6 +323,12 @@ get_cross_dataset_path <- function(cross_key) {
 build_within_cache <- function(species_key, integration_method) {
     dataset_key <- paste(species_key, integration_method, sep = "_")
     obj <- readRDS(get_within_dataset_path(species_key, integration_method))
+    obj <- apply_cluster_annotation_overlay(
+        obj,
+        dataset_key = dataset_key,
+        annotations_dir = cluster_annotations_dir,
+        legacy_overrides_dir = celltype_overrides_dir
+    )
 
     choice_tbl <- bind_rows(
         choice_rows(dataset_key, "within_group", within_group_choices_local(obj)),
@@ -326,6 +350,12 @@ build_within_cache <- function(species_key, integration_method) {
 
 build_cross_cache <- function(cross_key) {
     obj <- readRDS(get_cross_dataset_path(cross_key))
+    obj <- apply_cluster_annotation_overlay(
+        obj,
+        dataset_key = cross_key,
+        annotations_dir = cluster_annotations_dir,
+        legacy_overrides_dir = celltype_overrides_dir
+    )
 
     choice_tbl <- bind_rows(
         choice_rows(cross_key, "cross_group", cross_group_choices_local(obj)),

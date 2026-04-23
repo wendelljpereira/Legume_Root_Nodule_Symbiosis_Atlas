@@ -1,25 +1,63 @@
 # Legume Root Nodule Symbiosis Atlas
 
-Interactive single-cell atlas of root nodule symbiosis across
-*Medicago truncatula*, *Glycine max*, and *Lotus japonicus*, with
-two within-species integrations (ComBat/BBKNN, Seurat) and two cross-species
-integrations (Camex, SATURN).
+Interactive Shiny atlas for exploring single-cell root nodule symbiosis datasets across *Medicago truncatula*, *Glycine max*, and *Lotus japonicus*.
 
-The app accompanies an in-preparation publication. Until the paper is
-published, the hosted deployment on [ShinyApps.io](https://www.shinyapps.io/)
-is password-gated.
+The app lets researchers search genes of interest, inspect expression across published single-cell atlases, compare ortholog-aware expression patterns across species, review cluster markers, and export publication-ready figures with atlas provenance.
 
-## Running locally
+> This repository is in a pre-publication state. The hosted app may be password-gated until the accompanying manuscript is released.
 
-### Option 1: Docker (recommended)
+## What The App Provides
+
+- Within-species expression exploration for *Medicago truncatula*, *Glycine max*, and *Lotus japonicus*.
+- Cross-species comparison through CAMEx and SATURN integrations.
+- Gene search using gene IDs and available annotations/synonyms.
+- Expression UMAPs, violin plots, averaged expression by cluster, dot plots, and ridge plots.
+- Cluster marker tables and marker-to-gene-panel workflows.
+- Ortholog tracing for one-to-one, one-to-many, and missing mappings.
+- CSV-backed cluster annotations that can be edited without modifying Seurat RDS files.
+- Docker/local execution for reproducible use and deployment testing.
+
+## Documentation
+
+User-facing documentation is in `docs/` and is configured for ReadTheDocs.
+
+- Start here: `docs/index.md`
+- Local build requirements: `docs/requirements.txt`
+- ReadTheDocs config: `.readthedocs.yaml`
+- Release checklist: `docs/RELEASE_CHECKLIST.md`
+- Architecture notes: `docs/ARCHITECTURE.md`
+
+The documentation includes screenshots from the app, quick-start instructions, usage walkthroughs, strengths and limitations, deployment notes, and customization instructions for orthology and cluster annotation tables.
+
+## Repository Layout
+
+```text
+app.R                                  Shiny entrypoint and server wiring
+R/                                     reusable app helpers, plotting, annotations, UI builders
+www/                                   app CSS and browser-side assets
+annotations/                          gene annotations and editable cluster annotation CSVs
+metadata/                             generated app metadata caches
+orthogroups/                          ortholog/orthogroup table
+within_species_integrated_datasets/   within-species Seurat objects and slim app objects
+app_ready_integration/                 cross-species integration objects and assets
+scripts/                              cache builders, validators, smoke tests, release checks
+tests/                                testthat and browser-test scaffolding
+docs/                                 ReadTheDocs/Sphinx documentation
+```
+
+Large atlas objects are intentionally excluded from normal GitHub tracking unless you use a large-file strategy such as Git LFS or external release artifacts.
+
+## Running Locally
+
+### Docker, Recommended
 
 ```bash
 docker compose up --build
 ```
 
-Open http://localhost:3838.
+Open <http://localhost:3838>.
 
-The included `docker-compose.yml` mounts the local atlas data folders and exposes the same container defaults as the `docker run` example below. Override any of `ATLAS_ACCESS_PASSWORD`, `ATLAS_VERSION`, `ATLAS_LAST_UPDATED`, `ATLAS_ORTHOLOGS_PATH`, or `ATLAS_CELLTYPE_OVERRIDES_DIR` in your shell or a local `.env` file before starting Compose.
+The included `docker-compose.yml` mounts atlas data, metadata, orthology, and annotation folders into the container as read-only volumes. You can override settings in a local `.env` file or shell environment.
 
 Manual equivalent:
 
@@ -36,100 +74,121 @@ docker run --rm -p 3838:3838 \
     legume-atlas
 ```
 
-### Option 2: Run directly in R
+### Directly In R
 
 ```r
 install.packages(c(
-    "shiny", "shinyWidgets", "dplyr", "tidyr", "purrr", "tibble",
+    "shiny", "shinyWidgets", "DT", "dplyr", "tidyr", "purrr", "tibble",
     "ggplot2", "patchwork", "svglite", "plotly", "uwot", "viridisLite",
-    "Seurat", "scCustomize"
+    "Matrix", "rlang", "scales", "Seurat", "scCustomize",
+    "renv", "testthat", "shinytest2"
 ))
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("ComplexHeatmap", update = FALSE, ask = FALSE)
 shiny::runApp()
 ```
 
-If the CAMEx or SATURN `.rds` files are refreshed, regenerate their cached 3D
-embeddings with:
+## Editable Scientific Inputs
 
-```bash
-Rscript scripts/build_cross_app_slim.R
-Rscript scripts/build_cross_umap3d_embeddings.R
-```
+The app reads expression data from Seurat RDS files, but the main scientific tables that users may want to replace are plain files.
 
-If any within-species `.rds` files are refreshed, regenerate their slim deploy
-artifacts with:
-
-```bash
-Rscript scripts/build_within_app_slim.R
-```
-
-## User-supplied data overrides
-
-The app reads its heavy data (Seurat `.rds` files) from fixed folders, but
-the two scientifically-editable inputs can be swapped via environment
-variables without modifying `app.R`:
-
-| Env var | Default | Purpose |
+| Setting | Default | Purpose |
 |---|---|---|
-| `ATLAS_ORTHOLOGS_PATH` | `orthogroups/joint_orthogroups.tsv` | Ortholog/orthogroup table. Must have columns `Orthogroup`, `medicago.fa`, `glycine.fa`, `lotus.fa` (same format as OrthoFinder output). TSV or CSV is auto-detected by extension. |
-| `ATLAS_CELLTYPE_OVERRIDES_DIR` | `celltype_overrides/` | Folder of per-dataset CSVs. Any file named `<species>_<integration>.csv` or `<cross_key>.csv` (e.g. `medicago_Seurat.csv`, `camex.csv`) is read at startup. The CSV must have columns `cluster_id` and `label`; matching cluster IDs are relabeled. |
+| `ATLAS_ORTHOLOGS_PATH` | `orthogroups/joint_orthogroups.tsv` | Ortholog/orthogroup table. TSV or CSV is auto-detected. |
+| `ATLAS_CLUSTER_ANNOTATIONS_DIR` | `annotations/cluster_annotations/` | Preferred folder for shipped or user-edited cluster annotation CSVs. |
+| `ATLAS_CELLTYPE_OVERRIDES_DIR` | `celltype_overrides/` | Legacy simple overrides with `cluster_id,label`; still supported. |
+| `ATLAS_ACCESS_PASSWORD` | unset | Enables the pre-publication password gate. |
+| `ATLAS_VERSION` | `0.1.0-preview` | Displayed in the app footer and exports. |
+| `ATLAS_LAST_UPDATED` | current date | Displayed in the app footer. |
+| `ATLAS_CITATION` | preview citation | Displayed in the citation modal and export provenance. |
 
-Example `celltype_overrides/medicago_Seurat.csv`:
+Cluster annotation CSVs use this schema:
 
 ```csv
-cluster_id,label
-0,Cortex
-1,Infected cells
-2,Nodule primordium
+dataset_key,cluster_source,cluster_id,cell_type_label,annotation_status,confidence_score,marker_evidence,reference_source,notes
+medicago_Seurat,Rank_1st,0,Cortex,curated,0.95,"MtN21; MtN24","Original paper + marker review",""
 ```
 
-## Other environment variables
-
-| Env var | Default | Purpose |
-|---|---|---|
-| `ATLAS_ACCESS_PASSWORD` | *(unset)* | If set, app renders a password gate at startup. Leave unset during local Docker use. |
-| `ATLAS_VERSION` | `0.1.0-preview` | Shown in footer + citation modal. |
-| `ATLAS_LAST_UPDATED` | today's date | Shown as "Data updated" in footer. |
-| `ATLAS_CITATION` | preview citation | Text shown inside the **Cite this atlas** modal. |
-
-## ShinyApps.io deployment
-
-1. `ATLAS_ACCESS_PASSWORD` — set under **Advanced > Environment variables** in
-   the ShinyApps.io dashboard.
-2. `ATLAS_VERSION`, `ATLAS_LAST_UPDATED` — set whenever you push a new data
-   snapshot.
-3. Large Seurat `.rds` files live in the bundle — make sure the bundle stays
-   under ShinyApps.io size limits.
-
-## Before deploying
-
-After updating the underlying datasets, refresh the derived metadata caches from
-the main project directory with:
+Generate editable templates from the current datasets:
 
 ```bash
+Rscript scripts/write_cluster_annotation_templates.R
+```
+
+After editing labels, validate and refresh app metadata:
+
+```bash
+Rscript scripts/validate_cluster_annotations.R
 Rscript scripts/refresh_app_metadata.R
 ```
 
-Use `Rscript scripts/refresh_app_metadata.R --check-only` to see whether any
-managed cache is stale without rewriting files.
+## Updating Data And Caches
 
-For a full release rebuild, run the slim-cache builders and smoke test:
+When source Seurat objects change, rebuild slim app objects and generated caches before release.
 
 ```bash
 Rscript scripts/build_within_app_slim.R
 Rscript scripts/build_cross_app_slim.R
 Rscript scripts/build_gene_catalog_cache.R
 Rscript scripts/build_cluster_markers_cache.R
+Rscript scripts/write_cluster_annotation_templates.R
+Rscript scripts/validate_cluster_annotations.R
 Rscript scripts/build_atlas_summary_cache.R
 Rscript scripts/build_startup_ui_cache.R
 Rscript scripts/smoke_test.R
 ```
 
-`Rscript scripts/smoke_test.R` exits non-zero if any required slim RDS file is
-missing/corrupt or if a dataset lacks the `data` layer / expected reductions.
+For the strict pre-release gate:
 
-## Browser console note
+```bash
+Rscript scripts/release_check.R --skip-browser
+```
 
-The app should load without 404s or JavaScript errors. In Chromium-based
-browsers you may still see a `Canvas2D ... willReadFrequently` warning while
-Plotly/canvas export paths render; that warning comes from the browser canvas
-stack and is harmless.
+Then launch the app locally and run the Firefox browser smoke test, if Node/npm dependencies are available:
+
+```bash
+npm install
+ATLAS_APP_URL=http://127.0.0.1:3838 npm run test:e2e:firefox
+```
+
+## Deployment Notes
+
+The first deployment target is ShinyApps.io. The full local bundle is currently close to the practical 5 GB threshold, so release checks include a size estimate:
+
+```bash
+Rscript scripts/check_bundle_size.R
+```
+
+If future releases exceed the bundle limit, use versioned public-read data artifacts or another external storage layer for large RDS/cache files while keeping the Shiny interface unchanged.
+
+Docker or a VM/Posit Connect deployment remains the safest option for full-data public hosting if memory or bundle-size limits become restrictive.
+
+## Strengths And Limitations
+
+Strengths:
+
+- Integrates multiple published legume root nodule symbiosis single-cell datasets.
+- Supports both within-species and cross-species gene expression exploration.
+- Makes ortholog mapping visible rather than hiding one-to-many or missing mappings.
+- Keeps user-editable annotations and orthology inputs outside compiled app code.
+
+Limitations:
+
+- Cross-species plots depend on orthogroup membership and feature availability; they are comparative views, not proof of one-to-one conserved cell states.
+- Cluster annotations are curated labels over clustering solutions, not immutable biological truth.
+- Very large gene panels and large orthogroup expansions are capped to keep plots responsive.
+- Public hosting depends on ShinyApps.io bundle and memory constraints unless external data hosting is configured.
+
+## Citation
+
+The manuscript is in preparation. Until publication, cite the app as:
+
+> Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. In preparation. Legume Root Nodule Symbiosis Atlas, pre-publication release.
+
+Please also cite the original datasets and methods used by the atlas when interpreting or reusing results.
+
+## License
+
+This is pre-publication research software. See `LICENSE` for the current terms.

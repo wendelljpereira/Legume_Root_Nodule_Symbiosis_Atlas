@@ -3,7 +3,7 @@
 # Build:
 #   docker build -t legume-atlas .
 #
-# Run (mount your local data + orthologs + celltype overrides):
+# Run (mount your local data + orthologs + annotation overrides):
 #   The within-species and cross-species `*_app_slim.rds` files live inside the
 #   mounted `within_species_integrated_datasets/` and `app_ready_integration/`
 #   folders below, so no extra volume mounts are required after you generate them.
@@ -16,15 +16,17 @@
 #       -v "$(pwd)/celltype_overrides:/srv/atlas/celltype_overrides:ro" \
 #       legume-atlas
 #
-# Override the default orthologs or celltype folder via env vars:
+# Override the default orthologs or annotation folders via env vars:
 #   -e ATLAS_ORTHOLOGS_PATH=/srv/atlas/orthogroups/my_custom.tsv
+#   -e ATLAS_CLUSTER_ANNOTATIONS_DIR=/srv/atlas/annotations/cluster_annotations
 #   -e ATLAS_CELLTYPE_OVERRIDES_DIR=/srv/atlas/celltype_overrides
 #   -e ATLAS_ACCESS_PASSWORD=changeme     (leave unset locally to disable gate)
 #   -e ATLAS_VERSION=0.1.0
 #   -e ATLAS_LAST_UPDATED=2026-04-17
 # CRAN snapshot pinned to 2026-04-01 for reproducible Docker builds.
 
-FROM rocker/shiny:4.3.2
+ARG R_VERSION=4.5.3
+FROM rocker/shiny:${R_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive \
     R_LIBS_USER=/usr/local/lib/R/site-library \
@@ -57,7 +59,8 @@ RUN R -q -e "options(Ncpus = max(1L, parallel::detectCores() - 1L)); \
     install.packages(c( \
         'shiny', 'shinyWidgets', 'DT', 'dplyr', 'tidyr', 'purrr', 'tibble', \
         'ggplot2', 'patchwork', 'svglite', 'plotly', 'uwot', 'viridisLite', \
-        'Seurat', 'scCustomize' \
+        'Matrix', 'rlang', 'scales', 'Seurat', 'scCustomize', \
+        'renv', 'testthat', 'shinytest2' \
     ), repos = 'https://packagemanager.posit.co/cran/2026-04-01')"
 
 RUN R -q -e "if (!requireNamespace('BiocManager', quietly = TRUE)) \
@@ -67,14 +70,17 @@ RUN R -q -e "if (!requireNamespace('BiocManager', quietly = TRUE)) \
 WORKDIR ${ATLAS_APP_DIR}
 
 COPY app.R ./app.R
+COPY R ./R
 COPY www ./www
 COPY scripts ./scripts
+COPY DESCRIPTION LICENSE ./
 
 # Default data folders. Mount over these with --volume at run time.
 RUN mkdir -p within_species_integrated_datasets \
              app_ready_integration \
              orthogroups \
              annotations \
+             annotations/cluster_annotations \
              metadata \
              celltype_overrides
 
