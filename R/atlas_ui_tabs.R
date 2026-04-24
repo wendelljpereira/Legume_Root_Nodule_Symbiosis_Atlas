@@ -294,7 +294,6 @@ cross_tab_ui <- function(cross_key) {
                 h2(integration_cfg$section_title),
                 p(integration_cfg$description)
             ),
-            uiOutput(paste0(prefix, "_comparison_panel_ui")),
             # ── Cell distribution UMAP ──────────────────────────────────────
             div(
                 class = "subsection-header permalink-panel",
@@ -308,6 +307,13 @@ cross_tab_ui <- function(cross_key) {
                     div(
                         class = "option-group",
                         uiOutput(paste0(prefix, "_dist_group_by_ui"))
+                    )
+                ),
+                column(
+                    width = 4,
+                    div(
+                        class = "option-group",
+                        uiOutput(paste0(prefix, "_dist_split_by_ui"))
                     )
                 ),
                 column(
@@ -366,14 +372,21 @@ cross_tab_ui <- function(cross_key) {
                 class = "subsection-header permalink-panel",
                 `data-permalink-panel` = paste0(prefix, "_markers"),
                 h3("Cluster markers"),
-                p("Review precomputed positive markers for the active clustering solution when marker tables are available for it, add the top hits to the shared comparison panel, or download the current cluster as CSV.")
+                p("Review precomputed positive markers for the active clustering solution, optionally filter marker features by species, and add top hits to the Gene expression panel.")
             ),
             fluidRow(
                 column(
-                    width = 4,
+                    width = 3,
                     div(
                         class = "option-group",
                         uiOutput(paste0(prefix, "_marker_cluster_ui"))
+                    )
+                ),
+                column(
+                    width = 2,
+                    div(
+                        class = "option-group",
+                        uiOutput(paste0(prefix, "_marker_species_ui"))
                     )
                 ),
                 column(
@@ -391,14 +404,14 @@ cross_tab_ui <- function(cross_key) {
                     )
                 ),
                 column(
-                    width = 6,
+                    width = 5,
                     div(
                         class = "option-group marker-action-group",
                         div(
                             class = "marker-action-row",
                             actionButton(
                                 inputId = paste0(prefix, "_add_markers"),
-                                label = "Add top N to comparison panel",
+                                label = "Add top N genes to the Gene expression panel",
                                 icon = icon("plus"),
                                 class = "btn btn-default btn-sm plot-download-btn"
                             ),
@@ -427,8 +440,9 @@ cross_tab_ui <- function(cross_key) {
             div(
                 class = "subsection-header",
                 h3("Gene expression"),
-                p("Compare each selected gene across the shared embedding with a species overview plus aligned Medicago, Glycine, and Lotus expression panels.")
+                p("Build the shared Gene expression panel from typed genes, imported lists, or selected cluster markers, then generate ortholog-aware expression plots across the integrated atlas.")
             ),
+            uiOutput(paste0(prefix, "_comparison_panel_ui")),
             fluidRow(
                 column(
                     width = 4,

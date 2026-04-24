@@ -428,7 +428,7 @@ ui <- fluidPage(
                     return [
                         {
                             title: 'Pick a source species and enter genes',
-                            body: 'Open Camex or SATURN, choose the species that supplies your comparison genes, then stage one or more genes in the shared comparison panel.',
+                            body: 'Open Camex or SATURN, choose the species that supplies your genes, then stage one or more genes in the Gene expression panel.',
                             target: function() {
                                 var tabs = Array.prototype.slice.call(document.querySelectorAll('.nav-tabs li a'));
                                 return document.querySelector('.source-species-picker') ||
@@ -440,8 +440,8 @@ ui <- fluidPage(
                             }
                         },
                         {
-                            title: 'Apply the panel',
-                            body: 'Click Apply comparison panel when the staged list looks right. That shared panel drives the cross-species comparisons, while species tabs keep their own native local panels.',
+                            title: 'Generate cross-species plots',
+                            body: 'Click Generate cross-species expression plots when the staged list looks right. That shared panel drives the cross-species views, while species tabs keep their own native local panels.',
                             target: function() {
                                 var tabs = Array.prototype.slice.call(document.querySelectorAll('.nav-tabs li a'));
                                 return document.getElementById('apply_gene_selection') ||
@@ -1336,11 +1336,11 @@ server <- function(input, output, session) {
             gene_panel_busy_message(
                 if (length(staged_genes)) {
                     sprintf(
-                        "Refreshing the shared comparison panel for %d staged gene(s)...",
+                        "Refreshing the shared Gene expression panel for %d staged gene(s)...",
                         length(staged_genes)
                     )
                 } else {
-                    "Clearing the shared comparison panel..."
+                    "Clearing the shared Gene expression panel..."
                 }
             )
             session$sendCustomMessage("atlas_button_busy", list(
@@ -1732,9 +1732,9 @@ server <- function(input, output, session) {
                 target_key = "comparison",
                 species_key = current_comparison_source_species(),
                 integration_method = source_integration(),
-                panel_label = "cross-species comparison panel",
+                panel_label = "cross-species Gene expression panel",
                 species_label = species_label(current_comparison_source_species()),
-                replace_label = "Replace current comparison panel instead of appending"
+                replace_label = "Replace current Gene expression panel instead of appending"
             )
         } else {
             list(
@@ -1920,10 +1920,10 @@ server <- function(input, output, session) {
             staged_message <- if (length(staged_genes)) {
                 paste0(
                     length(staged_genes),
-                    " gene(s) staged. Click Apply comparison panel to refresh the cross-species views."
+                    " gene(s) staged. Click Generate cross-species expression plots to refresh the cross-species views."
                 )
             } else {
-                "No genes staged. Click Apply comparison panel to clear the cross-species views."
+                "No genes staged. Click Generate cross-species expression plots to clear the cross-species views."
             }
 
             if (!is.null(note)) {
@@ -1935,15 +1935,15 @@ server <- function(input, output, session) {
 
         if (n_genes == 0) {
             if (!is.null(note)) {
-                return(paste("No comparison genes selected yet.", note))
+                return(paste("No gene expression panel genes selected yet.", note))
             }
 
-            return("No comparison genes selected yet.")
+            return("No gene expression panel genes selected yet.")
         }
 
         base_message <- paste0(
             n_genes,
-            " gene(s) in the shared cross-species comparison panel."
+            " gene(s) in the shared cross-species gene expression panel."
         )
 
         if (!is.null(note)) {
@@ -4158,11 +4158,6 @@ server <- function(input, output, session) {
                 }
 
                 tagList(
-                    div(
-                        class = "subsection-header",
-                        h3("Cross-species comparison panel"),
-                        p("Choose the source species for this comparison, stage genes from that species, and apply the shared panel used throughout this integration tab.")
-                    ),
                     fluidRow(
                         column(
                             width = 3,
@@ -4170,7 +4165,7 @@ server <- function(input, output, session) {
                                 class = "option-group source-species-picker",
                                 shinyWidgets::pickerInput(
                                     inputId = "source_species",
-                                    label = "Comparison source species",
+                                    label = "Gene source species",
                                     choices = species_choices,
                                     selected = current_comparison_source_species(),
                                     multiple = FALSE
@@ -4183,7 +4178,7 @@ server <- function(input, output, session) {
                                 class = "option-group",
                                 selectizeInput(
                                     inputId = "selected_genes",
-                                    label = "Comparison panel genes",
+                                    label = "Gene expression panel",
                                     choices = NULL,
                                     multiple = TRUE,
                                     options = gene_panel_selectize_options(enable_bulk = TRUE)
@@ -4192,7 +4187,7 @@ server <- function(input, output, session) {
                                     class = "gene-action-row",
                                     actionButton(
                                         inputId = "apply_gene_selection",
-                                        label = "Apply comparison panel",
+                                        label = "Generate cross-species expression plots",
                                         icon = icon("play"),
                                         class = "btn btn-default apply-selection-btn"
                                     ),
@@ -4217,7 +4212,7 @@ server <- function(input, output, session) {
                                 class = "option-group",
                                 tags$p(
                                     class = "marker-status-hint",
-                                    "The selected genes remain shared between Camex and SATURN so you can switch integrations without rebuilding the cross-species comparison."
+                                    "This shared panel is used by both Camex and SATURN, so you can switch integrations without rebuilding the gene list."
                                 )
                             )
                         )
@@ -4247,6 +4242,11 @@ server <- function(input, output, session) {
             cross_distribution_group_choices_cached <- reactive({
                 get_cached_ui_choices(cross_key, "cross_distribution_group") %||%
                     cross_distribution_group_choices(cross_object(), cross_key)
+            })
+
+            cross_distribution_split_choices_cached <- reactive({
+                get_cached_ui_choices(cross_key, "cross_distribution_split") %||%
+                    cross_distribution_split_choices(cross_object())
             })
 
             cross_composition_choices_cached <- reactive({
@@ -4285,6 +4285,14 @@ server <- function(input, output, session) {
                 )
             })
 
+            cross_dist_split_by <- reactive({
+                resolve_choice(
+                    input[[paste0(prefix, "_dist_split_by")]],
+                    cross_distribution_split_choices_cached(),
+                    default = "none"
+                )
+            })
+
             output[[paste0(prefix, "_dist_group_by_ui")]] <- renderUI({
                 choices <- cross_distribution_group_choices_cached()
                 selectInput(
@@ -4295,6 +4303,20 @@ server <- function(input, output, session) {
                         input[[paste0(prefix, "_dist_group_by")]],
                         choices,
                         default = integration_cfg$default_group_by
+                    )
+                )
+            })
+
+            output[[paste0(prefix, "_dist_split_by_ui")]] <- renderUI({
+                choices <- cross_distribution_split_choices_cached()
+                selectInput(
+                    inputId = paste0(prefix, "_dist_split_by"),
+                    label = "Split UMAP by",
+                    choices = choices,
+                    selected = resolve_choice(
+                        input[[paste0(prefix, "_dist_split_by")]],
+                        choices,
+                        default = "none"
                     )
                 )
             })
@@ -4315,7 +4337,8 @@ server <- function(input, output, session) {
             })
 
             output[[paste0(prefix, "_dist_umap_plot_ui")]] <- renderUI({
-                has_3d <- !is.null(get_cross_umap3d(cross_key))
+                split_by <- cross_dist_split_by()
+                has_3d <- identical(split_by, "none") && !is.null(get_cross_umap3d(cross_key))
 
                 if (has_3d) {
                     div(
@@ -4343,7 +4366,7 @@ server <- function(input, output, session) {
                     spinning_plot_output(
                         paste0(prefix, "_dist_umap_plot"),
                         proxy_height = "540px",
-                        shell_class = "umap-plot-shell"
+                        shell_class = umap_plot_shell_class(split_by)
                     )
                 }
             })
@@ -5182,24 +5205,31 @@ server <- function(input, output, session) {
             cross_dist_umap_plot_obj <- reactive({
                 obj <- cross_object()
                 group_by <- cross_dist_group_by()
+                split_by <- cross_dist_split_by()
                 pt_size <- as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75)
-                plot_obj <- apply_metadata_display_order(obj, group_by)
-                colors_use <- distribution_colors_use(plot_obj, group_by)
-                show_cluster_labels <- is_cluster_distribution_group(group_by)
+                split_enabled <- !identical(split_by, "none")
+                plot_obj <- apply_metadata_display_order(obj, c(group_by, split_by))
+                color_map <- distribution_color_map(plot_obj@meta.data[[group_by]], group_by)
+                colors_use <- unname(color_map)
+                show_cluster_labels <- is_cluster_distribution_group(group_by) && identical(split_by, "none")
+                split_panels <- if (split_enabled) split_panel_count(plot_obj, split_by) else 1L
+                split_columns <- if (split_enabled) min(4L, split_panels) else NULL
 
                 p <- scCustomize::DimPlot_scCustom(
                     seurat_object = plot_obj,
                     colors_use = colors_use,
                     group.by = group_by,
+                    split.by = if (split_enabled) split_by else NULL,
                     pt.size = pt_size,
                     label = show_cluster_labels,
                     repel = show_cluster_labels,
-                    raster = TRUE
+                    raster = TRUE,
+                    num_columns = split_columns
                 ) &
                     app_plot_theme() &
                     theme(
                         legend.title = element_blank(),
-                        legend.position = if (show_cluster_labels) "none" else "top",
+                        legend.position = if (split_enabled || is_cluster_distribution_group(group_by)) "none" else "top",
                         panel.grid = element_blank(),
                         axis.title = element_blank(),
                         axis.text = element_blank(),
@@ -5208,28 +5238,67 @@ server <- function(input, output, session) {
                         plot.margin = margin(8, 14, 10, 10)
                     )
 
-                p & labs(title = NULL, color = NULL)
+                if (split_enabled) {
+                    p &
+                        labs(color = NULL) &
+                        theme(
+                            plot.title = element_text(
+                                face = "bold",
+                                colour = app_palette["text"],
+                                size = 13,
+                                hjust = 0.5
+                            )
+                        )
+                } else {
+                    p & labs(title = NULL, color = NULL)
+                }
             }) %>% bindCache(
                 cross_key,
                 cross_dist_group_by(),
+                cross_dist_split_by(),
                 as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75),
                 cache = "app"
             )
 
             output[[paste0(prefix, "_dist_umap_plot")]] <- renderPlot(
                 { cross_dist_umap_plot_obj() },
-                height = 540,
+                height = function() {
+                    split_by <- tryCatch(cross_dist_split_by(), error = function(e) "none")
+
+                    if (identical(split_by, "none")) {
+                        return(540)
+                    }
+
+                    panel_n <- tryCatch(
+                        split_panel_count(cross_object(), split_by),
+                        error = function(e) 1L
+                    )
+                    split_cols <- min(4L, max(1L, panel_n))
+                    split_rows <- ceiling(panel_n / split_cols)
+
+                    max(540, split_rows * 320)
+                },
                 res = 110
             )
 
             output[[paste0("dl_", prefix, "_dist_umap")]] <- downloadHandler(
                 filename = function() paste0(prefix, "_dist_umap.", get_ext()),
                 content = function(file) {
+                    split_by <- cross_dist_split_by()
+                    plot_height <- if (identical(split_by, "none")) {
+                        8
+                    } else {
+                        panel_n <- split_panel_count(cross_object(), split_by)
+                        split_cols <- min(4L, max(1L, panel_n))
+                        split_rows <- ceiling(panel_n / split_cols)
+                        max(8, split_rows * 3.4)
+                    }
+
                     save_ggplot(
                         file = file,
                         plot_obj = cross_dist_umap_plot_obj(),
                         width = 10,
-                        height = 8,
+                        height = plot_height,
                         tab_label = cross_integration_label(cross_key),
                         integration_label = cross_integration_label(cross_key),
                         extra = list(atlas_export_type = "distribution_umap")
@@ -5238,6 +5307,13 @@ server <- function(input, output, session) {
             )
 
             cross_dist_umap3d_plot_data <- reactive({
+                validate(
+                    need(
+                        identical(cross_dist_split_by(), "none"),
+                        "3D UMAP is available only when the distribution view is not split."
+                    )
+                )
+
                 group_by <- cross_dist_group_by()
                 obj <- apply_metadata_display_order(cross_object(), group_by)
                 embedding <- get_cross_umap3d(cross_key)
@@ -5415,6 +5491,43 @@ server <- function(input, output, session) {
                 setNames(lookup_tbl$cluster, lookup_tbl$choice_label)
             })
 
+            cross_marker_species_choices <- reactive({
+                marker_tbl <- cross_markers_full()
+                choices <- c("All feature species" = "all")
+
+                if (is.null(marker_tbl) || !nrow(marker_tbl)) {
+                    return(choices)
+                }
+
+                marker_source <- cross_marker_source()
+                feature_ids <- marker_tbl %>%
+                    filter(cluster_source == !!marker_source) %>%
+                    pull(gene)
+
+                feature_species <- parse_cross_feature_ids(feature_ids)$feature_species
+                present_species <- within_species_keys[within_species_keys %in% unique(feature_species)]
+
+                if (length(present_species)) {
+                    choices <- c(
+                        choices,
+                        setNames(
+                            present_species,
+                            vapply(present_species, species_label, character(1))
+                        )
+                    )
+                }
+
+                choices
+            })
+
+            cross_marker_species_filter <- reactive({
+                resolve_choice(
+                    input[[paste0(prefix, "_marker_species")]],
+                    cross_marker_species_choices(),
+                    default = "all"
+                )
+            })
+
             output[[paste0(prefix, "_marker_cluster_ui")]] <- renderUI({
                 choices <- cross_marker_choices()
 
@@ -5439,6 +5552,21 @@ server <- function(input, output, session) {
                         input[[paste0(prefix, "_marker_cluster")]],
                         choices,
                         default = unname(choices[[1]])
+                    )
+                )
+            })
+
+            output[[paste0(prefix, "_marker_species_ui")]] <- renderUI({
+                choices <- cross_marker_species_choices()
+
+                selectInput(
+                    inputId = paste0(prefix, "_marker_species"),
+                    label = "Marker feature species",
+                    choices = choices,
+                    selected = resolve_choice(
+                        input[[paste0(prefix, "_marker_species")]],
+                        choices,
+                        default = "all"
                     )
                 )
             })
@@ -5508,9 +5636,20 @@ server <- function(input, output, session) {
 
                 cluster_id <- cross_marker_cluster()
                 marker_source <- cross_marker_source()
+                species_filter <- cross_marker_species_filter()
                 filtered_tbl <- marker_tbl %>%
                     filter(cluster_source == !!marker_source) %>%
-                    filter(cluster == !!cluster_id) %>%
+                    filter(cluster == !!cluster_id)
+
+                if (!identical(species_filter, "all")) {
+                    filtered_species <- parse_cross_feature_ids(filtered_tbl$gene)$feature_species
+                    filtered_tbl <- filtered_tbl %>%
+                        mutate(.marker_feature_species = filtered_species) %>%
+                        filter(.marker_feature_species == !!species_filter) %>%
+                        select(-.marker_feature_species)
+                }
+
+                filtered_tbl <- filtered_tbl %>%
                     arrange(p_val_adj, desc(avg_log2FC), desc(pct.1), gene)
 
                 validate(need(nrow(filtered_tbl) > 0, "No marker rows are available for the selected cluster."))
@@ -5533,6 +5672,7 @@ server <- function(input, output, session) {
                 source_species <- current_comparison_source_species()
                 cluster_choices <- cross_marker_choices()
                 marker_source <- cross_marker_source()
+                marker_species_filter <- cross_marker_species_filter()
                 active_group_by <- cross_dist_group_by()
                 current_cluster_label <- names(cluster_choices)[match(cross_marker_cluster(), unname(cluster_choices))]
                 current_cluster_label <- current_cluster_label[!is.na(current_cluster_label) & nzchar(current_cluster_label)][1] %||% cross_marker_cluster()
@@ -5547,12 +5687,18 @@ server <- function(input, output, session) {
                         " is not a cached clustering solution."
                     )
                 }
+                species_filter_sentence <- if (!identical(marker_species_filter, "all")) {
+                    paste0(" filtered to ", species_label(marker_species_filter), " marker features.")
+                } else {
+                    ""
+                }
                 tags$p(
                     class = "marker-status-hint",
                     sprintf(
-                        "Showing markers for %s %s Top markers will be mapped back into the %s comparison panel and staged until you click Apply comparison panel.",
+                        "Showing markers for %s %s%s Top markers will be mapped back into the %s gene expression panel and staged until you click Generate cross-species expression plots.",
                         current_cluster_label,
                         source_sentence,
+                        species_filter_sentence,
                         species_label(source_species)
                     )
                 )
@@ -5596,7 +5742,7 @@ server <- function(input, output, session) {
                 set_marker_job_message(
                     prefix,
                     sprintf(
-                        "Adding the top %d markers from the %s cluster in %s into the shared %s comparison panel...",
+                        "Adding the top %d markers from the %s cluster in %s into the shared %s Gene expression panel...",
                         nrow(marker_tbl),
                         cross_marker_cluster(),
                         cross_integration_label(cross_key),
@@ -5632,7 +5778,7 @@ server <- function(input, output, session) {
                 if (!length(genes_to_add)) {
                     showNotification(
                         sprintf(
-                            "No top markers from this %s cluster could be mapped into the %s comparison panel.",
+                            "No top markers from this %s cluster could be mapped into the %s Gene expression panel.",
                             cross_integration_label(cross_key),
                             species_label(source_species)
                         ),
@@ -5657,7 +5803,7 @@ server <- function(input, output, session) {
                     paste0(
                         "Added ",
                         length(genes_to_add),
-                        " mapped marker gene(s) to the shared selection. Click Apply comparison panel to refresh the cross-species views",
+                        " mapped marker gene(s) to the shared selection. Click Generate cross-species expression plots to refresh the cross-species views",
                         if (skipped_n > 0) paste0("; ", skipped_n, " could not be mapped into the current source species.") else "."
                     ),
                     type = "message",
@@ -5673,13 +5819,22 @@ server <- function(input, output, session) {
                     marker_tbl <- cross_marker_table_raw()
                     lookup_tbl <- cross_marker_lookup()
                     cluster_labels <- lookup_tbl$cluster_label[match(marker_tbl$cluster, lookup_tbl$cluster)]
+                    marker_feature_species <- parse_cross_feature_ids(marker_tbl$gene)$feature_species
+                    marker_feature_species_label <- rep(NA_character_, length(marker_feature_species))
+                    known_species <- marker_feature_species %in% within_species_keys
+                    marker_feature_species_label[known_species] <- vapply(
+                        marker_feature_species[known_species],
+                        species_label,
+                        character(1)
+                    )
 
                     export_tbl <- marker_tbl %>%
                         mutate(
                             cluster_label = ifelse(is.na(cluster_labels) | !nzchar(cluster_labels), cluster, cluster_labels),
+                            marker_feature_species = marker_feature_species_label,
                             gene_label = display_cross_feature_labels(cross_key, gene)
                         ) %>%
-                        select(cluster, cluster_label, gene, gene_label, avg_log2FC, pct.1, pct.2, p_val_adj) %>%
+                        select(cluster, cluster_label, marker_feature_species, gene, gene_label, avg_log2FC, pct.1, pct.2, p_val_adj) %>%
                         add_export_provenance_columns(
                             tab_label = cross_integration_label(cross_key),
                             integration_label = cross_integration_label(cross_key),

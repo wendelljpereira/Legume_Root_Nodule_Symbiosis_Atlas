@@ -4065,18 +4065,23 @@ cross_distribution_group_choices <- function(obj, cross_key) {
         }
     }
 
-    maybe_add("Time point", "time_point")
     maybe_add("Species", "species")
-    maybe_add("Clustering opt 1 label", "Rank_1st_label")
-    maybe_add("Clustering opt 2 label", "Rank_2nd_label")
-    maybe_add("Clustering opt 3 label", "Rank_3rd_label")
-    maybe_add("Clustering opt 4 label", "Rank_4th_label")
-    maybe_add("Clustering opt 5 label", "Rank_5th_label")
     maybe_add("Clustering opt 1", "Rank_1st")
     maybe_add("Clustering opt 2", "Rank_2nd")
     maybe_add("Clustering opt 3", "Rank_3rd")
     maybe_add("Clustering opt 4", "Rank_4th")
     maybe_add("Clustering opt 5", "Rank_5th")
+
+    choices
+}
+
+cross_distribution_split_choices <- function(obj) {
+    available_cols <- colnames(obj@meta.data)
+    choices <- c("No split" = "none")
+
+    if ("species" %in% available_cols) {
+        choices <- c(choices, "Species" = "species")
+    }
 
     choices
 }
