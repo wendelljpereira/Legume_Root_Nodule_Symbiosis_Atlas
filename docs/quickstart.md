@@ -2,7 +2,7 @@
 
 ## Open The Hosted App
 
-Open the atlas URL provided by the project team. During the pre-publication period, the hosted ShinyApps.io deployment may require a password.
+Open the atlas URL provided by the project team. Some private or workshop deployments may require a password.
 
 After the app loads, start with the **Overview** page to confirm the atlas version, data-update date, and available species/integration summaries.
 

@@ -16,8 +16,6 @@ Marker tables and mapping tables can be downloaded when available. These are use
 
 ## Citation
 
-Until the manuscript is published, cite the atlas as:
+Cite the atlas version used for your analysis and the original datasets and computational methods that support the specific results you interpret.
 
-> Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. In preparation. Legume Root Nodule Symbiosis Atlas, pre-publication release.
-
-Also cite the original datasets and computational methods that support the specific analysis you use.
+> Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. Legume Root Nodule Symbiosis Atlas, version 1.0.

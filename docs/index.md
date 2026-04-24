@@ -57,8 +57,6 @@ ARCHITECTURE
 
 ## Citation
 
-The atlas accompanies an in-preparation manuscript. Until publication, cite the app as:
+Cite the atlas version used for your analysis and the original datasets and computational methods that support the specific results you interpret.
 
-> Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. In preparation. Legume Root Nodule Symbiosis Atlas, pre-publication release.
-
-Please also cite the original datasets and computational methods used in the atlas when interpreting or reusing results.
+> Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. Legume Root Nodule Symbiosis Atlas, version 1.0.

@@ -13,11 +13,11 @@ env <- new.env(parent = globalenv())
 sys.source("app.R", envir = env)
 
 genes <- c(
-    "05469365-9109-4067-9320-3e2a89459240",
-    "06b706c5-0c87-4699-b519-2411dda9000d",
-    "0b3aabc5-10e1-47ae-bf81-c1e8eaa77209",
-    "1.8-mRNA-MtrunA17Chr2-13608494-13610171",
-    "1.8-mRNA-MtrunA17Chr3-31913516-31914185"
+    "MtrunA17Chr6g0451794",
+    "MtrunA17Chr8g0390444",
+    "MtrunA17Chr5g0436974",
+    "MtrunA17Chr2g0295104",
+    "MtrunA17Chr3g0108754"
 )
 
 profile_target <- function() {

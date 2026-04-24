@@ -92,7 +92,7 @@ atlas_version <- resolve_env_path("ATLAS_VERSION", "1.0")
 atlas_last_updated <- resolve_env_path("ATLAS_LAST_UPDATED", format(Sys.Date(), "%Y-%m-%d"))
 atlas_citation_text <- resolve_env_path(
     "ATLAS_CITATION",
-    "Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. (in preparation, 2026). Please cite prior to publication as: 'Legume Root Nodule Symbiosis Atlas, pre-publication release.'"
+    "Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. Legume Root Nodule Symbiosis Atlas, version 1.0."
 )
 atlas_cache_max_entries <- max(
     8L,
@@ -107,9 +107,9 @@ atlas_plot_feature_limit <- max(
     suppressWarnings(as.integer(Sys.getenv("ATLAS_PLOT_FEATURE_LIMIT", "80")))
 )
 
-# Pre-publication access gate. Set ATLAS_ACCESS_PASSWORD on the server
-# (ShinyApps.io > Advanced > Environment variables) to require a password
-# before the app renders. Leave unset during local Docker use.
+# Optional access gate. Set ATLAS_ACCESS_PASSWORD on the server
+# (ShinyApps.io > Advanced > Environment variables) when a deployment
+# should require a password before the app renders.
 atlas_access_password <- Sys.getenv("ATLAS_ACCESS_PASSWORD", unset = "")
 atlas_access_required <- nzchar(atlas_access_password)
 
@@ -1443,11 +1443,40 @@ group_palette_for_toggle <- function(values, column_name, colorblind_safe = FALS
     distribution_color_map(values, column_name)
 }
 
-expression_heatmap_palette <- function(colorblind_safe = FALSE) {
-    c(
-        "#f7f7f4",
-        sc_customize_feature_palette(colorblind_safe)
-    )
+expression_heatmap_z_palette <- function(colorblind_safe = FALSE) {
+    if (isTRUE(colorblind_safe)) {
+        return(c(low = "#315a8c", mid = "#fff8df", high = "#b45f1f"))
+    }
+
+    c(low = "#315f72", mid = "#fff7d6", high = "#9b3f52")
+}
+
+row_scale_average_expression_matrix <- function(avg_expr_mat) {
+    avg_expr_mat <- as.matrix(avg_expr_mat)
+    scaled_mat <- t(apply(avg_expr_mat, 1, function(values) {
+        missing_values <- is.na(values)
+
+        if (all(missing_values)) {
+            return(rep(NA_real_, length(values)))
+        }
+
+        gene_mean <- mean(values, na.rm = TRUE)
+        gene_sd <- stats::sd(values, na.rm = TRUE)
+
+        if (!is.finite(gene_sd) || gene_sd == 0) {
+            scaled_values <- rep(0, length(values))
+            scaled_values[missing_values] <- NA_real_
+            return(scaled_values)
+        }
+
+        scaled_values <- (values - gene_mean) / gene_sd
+        scaled_values[missing_values] <- NA_real_
+        scaled_values
+    }))
+
+    rownames(scaled_mat) <- rownames(avg_expr_mat)
+    colnames(scaled_mat) <- colnames(avg_expr_mat)
+    scaled_mat
 }
 
 sample_cell_ids_by_group <- function(obj, group_by, max_cells = 2000L, seed = 123L) {
@@ -1579,7 +1608,8 @@ build_expression_heatmap_plot <- function(
     }
 
     avg_expr_mat <- get_cached_average_expression_matrix(obj, feature_ids, group_by)
-    group_levels <- colnames(avg_expr_mat)
+    scaled_expr_mat <- row_scale_average_expression_matrix(avg_expr_mat)
+    group_levels <- colnames(scaled_expr_mat)
 
     if (!length(group_levels)) {
         stop("No groups are available for the current heatmap selection.")
@@ -1591,11 +1621,11 @@ build_expression_heatmap_plot <- function(
         feature_ids
     )
 
-    heatmap_df <- as_tibble(as.matrix(avg_expr_mat), rownames = "feature_id") %>%
+    heatmap_df <- as_tibble(scaled_expr_mat, rownames = "feature_id") %>%
         tidyr::pivot_longer(
             cols = -feature_id,
             names_to = "group_value",
-            values_to = "avg_expression"
+            values_to = "scaled_expression"
         ) %>%
         mutate(
             group_value = factor(group_value, levels = group_levels, ordered = TRUE),
@@ -1606,11 +1636,23 @@ build_expression_heatmap_plot <- function(
             )
         )
 
-    ggplot(heatmap_df, aes(x = group_value, y = feature_label, fill = avg_expression)) +
+    z_limit <- suppressWarnings(max(abs(heatmap_df$scaled_expression), na.rm = TRUE))
+    if (!is.finite(z_limit) || z_limit <= 0) {
+        z_limit <- 1
+    }
+
+    heatmap_palette <- expression_heatmap_z_palette(colorblind_safe)
+
+    ggplot(heatmap_df, aes(x = group_value, y = feature_label, fill = scaled_expression)) +
         geom_tile(color = scales::alpha("white", 0.55), linewidth = 0.35) +
-        scale_fill_gradientn(
-            colors = expression_heatmap_palette(colorblind_safe),
-            name = "Average expression",
+        scale_fill_gradient2(
+            low = unname(heatmap_palette[["low"]]),
+            mid = unname(heatmap_palette[["mid"]]),
+            high = unname(heatmap_palette[["high"]]),
+            midpoint = 0,
+            limits = c(-z_limit, z_limit),
+            oob = scales::squish,
+            name = "Row-scaled average\nexpression (z-score)",
             na.value = "#f3f4ef"
         ) +
         labs(
@@ -1625,96 +1667,6 @@ build_expression_heatmap_plot <- function(
             legend.title = element_text(face = "bold"),
             plot.margin = margin(8, 14, 12, 10)
         )
-}
-
-build_expression_ridge_plot <- function(
-    obj,
-    feature_ids,
-    label_map,
-    group_by,
-    colorblind_safe = FALSE,
-    max_cells = 3000L
-) {
-    sampled_selection <- get_cached_sampled_object(
-        obj,
-        group_by = group_by,
-        max_cells = max_cells,
-        seed = 456L
-    )
-    sampled_obj <- sampled_selection$object
-    sampled_cell_ids <- sampled_selection$cell_ids
-
-    if (!length(sampled_cell_ids)) {
-        stop("No cells are available for the current ridge plot selection.")
-    }
-
-    feature_ids <- intersect(unique(as.character(feature_ids)), rownames(sampled_obj))
-
-    if (!length(feature_ids)) {
-        stop("No mapped genes are available for the current ridge plot selection.")
-    }
-
-    feature_labels <- expression_feature_labels(feature_ids, label_map)
-    group_values <- sampled_obj@meta.data[[group_by]]
-    group_colors <- group_palette_for_toggle(
-        values = group_values,
-        column_name = group_by,
-        colorblind_safe = colorblind_safe
-    )
-
-    ridge_plots <- Seurat::RidgePlot(
-        object = sampled_obj,
-        features = feature_ids,
-        group.by = group_by,
-        cols = unname(group_colors),
-        same.y.lims = TRUE,
-        combine = FALSE,
-        fill.by = "ident",
-        layer = "data"
-    )
-
-    ridge_plots <- purrr::imap(ridge_plots, function(plot_obj, idx) {
-        feature_id <- feature_ids[[idx]]
-
-        plot_obj +
-            labs(
-                title = unname(feature_labels[[feature_id]]),
-                x = "Normalized expression",
-                y = metadata_column_label(group_by)
-            ) +
-            app_plot_theme() +
-            theme(
-                plot.title = element_text(
-                    face = "bold",
-                    colour = app_palette["text"],
-                    size = 16,
-                    hjust = 0
-                ),
-                legend.position = "none",
-                panel.grid.major.y = element_blank(),
-                plot.margin = margin(8, 14, 12, 10)
-            )
-    })
-
-    if (length(ridge_plots) == 1L) {
-        ridge_plots[[1]]
-    } else {
-        wrap_plots(plotlist = ridge_plots, ncol = 1)
-    }
-}
-
-expression_ridge_height_px <- function(feature_n, group_n) {
-    feature_n <- max(1L, as.integer(feature_n %||% 0L))
-    group_n <- max(1L, as.integer(group_n %||% 0L))
-    per_feature_height <- max(
-        420L,
-        as.integer(170L + group_n * 36L)
-    )
-
-    max(
-        560L,
-        feature_n * per_feature_height
-    )
 }
 
 add_species_caption <- function(plot_obj, species_key, sublabel = NULL) {

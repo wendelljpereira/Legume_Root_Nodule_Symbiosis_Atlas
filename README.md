@@ -4,7 +4,6 @@ Interactive Shiny atlas for exploring single-cell root nodule symbiosis datasets
 
 The app lets researchers search genes of interest, inspect expression across published single-cell atlases, compare ortholog-aware expression patterns across species, review cluster markers, and export publication-ready figures with atlas provenance.
 
-> This repository is in a pre-publication state. The hosted app may be password-gated until the accompanying manuscript is released.
 
 ## What The App Provides
 
@@ -99,10 +98,10 @@ The app reads expression data from Seurat RDS files, but the main scientific tab
 | `ATLAS_ORTHOLOGS_PATH` | `orthogroups/joint_orthogroups.tsv` | Ortholog/orthogroup table. TSV or CSV is auto-detected. |
 | `ATLAS_CLUSTER_ANNOTATIONS_DIR` | `annotations/cluster_annotations/` | Preferred folder for shipped or user-edited cluster annotation CSVs. |
 | `ATLAS_CELLTYPE_OVERRIDES_DIR` | `celltype_overrides/` | Legacy simple overrides with `cluster_id,label`; still supported. |
-| `ATLAS_ACCESS_PASSWORD` | unset | Enables the pre-publication password gate. |
+| `ATLAS_ACCESS_PASSWORD` | unset | Enables an optional access gate for private deployments. |
 | `ATLAS_VERSION` | `0.1.0-preview` | Displayed in the app footer and exports. |
 | `ATLAS_LAST_UPDATED` | current date | Displayed in the app footer. |
-| `ATLAS_CITATION` | preview citation | Displayed in the citation modal and export provenance. |
+| `ATLAS_CITATION` | atlas citation text | Displayed in the citation modal and export provenance. |
 
 Cluster annotation CSVs use this schema:
 
@@ -183,12 +182,10 @@ Limitations:
 
 ## Citation
 
-The manuscript is in preparation. Until publication, cite the app as:
+Cite the atlas version used for your analysis and the original datasets and methods that support the specific results you interpret.
 
-> Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. In preparation. Legume Root Nodule Symbiosis Atlas, pre-publication release.
-
-Please also cite the original datasets and methods used by the atlas when interpreting or reusing results.
+> Pereira W. et al. A cross-species single-cell atlas of legume root nodule symbiosis. Legume Root Nodule Symbiosis Atlas, version 1.0.
 
 ## License
 
-This is pre-publication research software. See `LICENSE` for the current terms.
+See `LICENSE` for the current terms.

@@ -20,7 +20,7 @@ ATLAS_LAST_UPDATED
 ATLAS_CITATION
 ```
 
-During pre-publication, set `ATLAS_ACCESS_PASSWORD` to keep the public app gated.
+Set `ATLAS_ACCESS_PASSWORD` when you need a private, workshop, or restricted-access deployment.
 
 ## Bundle Size
 

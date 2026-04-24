@@ -4,6 +4,10 @@
 source(file.path("R", "atlas_core.R"), local = TRUE)
 source(file.path("R", "atlas_ui_tabs.R"), local = TRUE)
 
+styles_css_mtime <- file.info(file.path("www", "styles.css"))$mtime
+styles_css_version <- if (is.na(styles_css_mtime)) as.integer(Sys.time()) else as.integer(styles_css_mtime)
+styles_css_href <- sprintf("styles.css?v=%s", styles_css_version)
+
 ui <- fluidPage(
     tags$head(
         tags$link(rel = "preconnect", href = "https://fonts.googleapis.com"),
@@ -13,7 +17,7 @@ ui <- fluidPage(
             href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
         ),
         tags$link(rel = "icon", type = "image/svg+xml", href = "favicon.svg"),
-        tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
+        tags$link(rel = "stylesheet", type = "text/css", href = styles_css_href),
         tags$script(HTML(
             "(function() {
                 function atlasVisiblePermalinkPanel() {
@@ -147,6 +151,7 @@ ui <- fluidPage(
                     if (window.Shiny && Shiny.setInputValue) {
                         Shiny.setInputValue('selected_genes_bulk_query', {
                             query: query,
+                            input_id: selectize && selectize.$input ? selectize.$input.attr('id') : null,
                             nonce: Date.now()
                         }, { priority: 'event' });
                     }
@@ -907,8 +912,7 @@ ui <- fluidPage(
                 class = "hero-badge-row",
                 span(class = "hero-badge", "3 legume species"),
                 span(class = "hero-badge", "within-species + cross-species views"),
-                span(class = "hero-badge", "ortholog-aware expression plots"),
-                span(class = "hero-badge hero-badge-warm", "pre-publication atlas")
+                span(class = "hero-badge", "ortholog-aware expression plots")
             )
         ),
         uiOutput("atlas_summary_ui"),
@@ -978,19 +982,19 @@ ui <- fluidPage(
                             div(
                                 class = "section-header",
                                 div(class = "section-eyebrow", "Start here"),
-                                h2("Choose how you want to explore the atlas"),
-                                p("Use the species-specific tabs for native expression and marker discovery, then switch to a cross-species tab when you want orthology-aware comparison.")
+                                h2("Explore your genes of interest across the atlas"),
+                                p("Start with a species-specific tab to inspect native expression patterns, or use a cross-species tab when you want to compare ortholog-aware expression across legumes.")
                             ),
                             div(
                                 class = "alert-stack overview-landing-stack",
                                 notice_card(
-                                    title = "Within-species tabs",
-                                    body = "Build native local gene panels, inspect expression in each atlas, and use cluster markers without leaving the current species.",
+                                    title = "Within-species expression",
+                                    body = "Search for genes of interest, inspect where they are expressed in each species atlas, and use cluster markers to discover related candidates.",
                                     tone = "info"
                                 ),
                                 notice_card(
-                                    title = "Cross-species tabs",
-                                    body = "Build a shared comparison panel inside Camex or SATURN, choose the source species there, and review ortholog-aware mapping summaries directly in those tabs.",
+                                    title = "Cross-species comparison",
+                                    body = "Compare genes of interest through Camex or SATURN, choose the source species there, and review the ortholog mapping behind each plot.",
                                     tone = "info"
                                 )
                             )
@@ -1115,10 +1119,10 @@ server <- function(input, output, session) {
             div(
                 class = "app-gate-card",
                 div(class = "app-gate-icon", `aria-hidden` = "true", icon("leaf")),
-                h2(id = "app-gate-title", class = "app-gate-title", "Pre-publication access"),
+                h2(id = "app-gate-title", class = "app-gate-title", "Private access"),
                 p(
                     class = "app-gate-copy",
-                    "This atlas is currently restricted while the accompanying manuscript is under peer review. Enter the access password shared with reviewers to continue."
+                    "This deployment is restricted. Enter the access password to continue."
                 ),
                 div(
                     class = "app-gate-form",
@@ -1389,7 +1393,7 @@ server <- function(input, output, session) {
             ),
             tags$p(
                 class = "citation-meta",
-                HTML("<em>A peer-reviewed publication describing this atlas is in preparation. This citation will be updated once the paper is published.</em>")
+                HTML("<em>Please cite the atlas version shown above and the original datasets that support your analysis.</em>")
             ),
             footer = modalButton("Close")
         ))
@@ -1591,8 +1595,63 @@ server <- function(input, output, session) {
     observeEvent(input$selected_genes_bulk_query, {
         payload <- input$selected_genes_bulk_query %||% list()
         query <- trimws(as.character(payload$query %||% ""))
+        input_id <- as.character(payload$input_id %||% "selected_genes")
 
         if (!nzchar(query)) {
+            return()
+        }
+
+        local_species <- within_species_keys[vapply(within_species_keys, function(species_key) {
+            identical(input_id, local_panel_input_id(species_key))
+        }, logical(1))]
+
+        if (length(local_species)) {
+            species_key <- local_species[[1]]
+            bundle <- build_gene_choices(species_key, current_species_integration(species_key))
+            matched_ids <- match_gene_choices(bundle, query)
+            current_selection <- isolate(local_staged_gene_values(species_key))
+            new_matches <- setdiff(matched_ids, current_selection)
+            updated_selection <- unique(c(current_selection, matched_ids))
+
+            update_local_selected_genes_input(
+                species_key = species_key,
+                choice_bundle = bundle,
+                selected = updated_selection
+            )
+
+            if (!length(matched_ids)) {
+                showNotification(
+                    sprintf("No genes in %s match \"%s\".", species_label(species_key), query),
+                    type = "warning",
+                    duration = 6
+                )
+                return()
+            }
+
+            if (!length(new_matches)) {
+                showNotification(
+                    sprintf(
+                        "All %d %s gene(s) matching \"%s\" are already staged.",
+                        length(matched_ids),
+                        species_label(species_key),
+                        query
+                    ),
+                    type = "message",
+                    duration = 6
+                )
+                return()
+            }
+
+            showNotification(
+                sprintf(
+                    "Added %d %s gene(s) matching \"%s\" to this tab's Gene expression panel.",
+                    length(new_matches),
+                    species_label(species_key),
+                    query
+                ),
+                type = "message",
+                duration = 6
+            )
             return()
         }
 
@@ -1984,7 +2043,7 @@ server <- function(input, output, session) {
                     class = "alert-stack",
                     notice_card(
                         title = "Ready for selection",
-                        body = "Build a shared comparison panel here, or promote a local species panel from a within-species tab when you are ready for cross-species comparison.",
+                        body = "Select source-species genes here, or bring over genes from a within-species tab when you are ready to explore orthology-aware comparisons.",
                         tone = "info"
                     )
                 )
@@ -2381,6 +2440,11 @@ server <- function(input, output, session) {
                 }
             })
 
+            output[[paste0(prefix, "_has_expression_plots")]] <- reactive({
+                length(tab_local_applied_genes()) > 0
+            })
+            outputOptions(output, paste0(prefix, "_has_expression_plots"), suspendWhenHidden = FALSE)
+
             observeEvent(input[[paste0(prefix, "_apply_local_genes")]], {
                 staged_genes <- tab_local_staged_genes()
 
@@ -2548,19 +2612,7 @@ server <- function(input, output, session) {
                 genes <- tab_local_applied_genes()
 
                 if (!length(genes)) {
-                    return(
-                        div(
-                            class = "alert-stack",
-                            notice_card(
-                                title = paste("No local", tab_label, "genes applied yet"),
-                                body = sprintf(
-                                    "Build a native %s gene panel to populate the expression plots in this tab. Cluster structure and composition remain available without a local panel.",
-                                    tab_label
-                                ),
-                                tone = "info"
-                            )
-                        )
-                    )
+                    return(NULL)
                 }
 
                 resolution <- tab_resolution()
@@ -3503,33 +3555,6 @@ server <- function(input, output, session) {
                 cache = "app"
             )
 
-            ridge_plot_obj <- reactive({
-                resolution <- expression_resolution()
-                obj <- tab_object()
-
-                validate(
-                    need(
-                        length(resolution$plot_features) > 0,
-                        paste("No mapped genes are available for", tab_label, "in the selected atlas.")
-                    )
-                )
-
-                build_expression_ridge_plot(
-                    obj = obj,
-                    feature_ids = resolution$plot_features,
-                    label_map = resolution$label_map,
-                    group_by = tab_group_by(),
-                    colorblind_safe = isTRUE(input$colorblind_safe)
-                )
-            }) %>% bindCache(
-                species_key,
-                current_species_integration(species_key),
-                tab_local_applied_genes(),
-                tab_group_by(),
-                isTRUE(input$colorblind_safe),
-                cache = "app"
-            )
-
 	            dot_plot_obj <- reactive({
 	                resolution <- expression_resolution()
 	                obj <- tab_object()
@@ -3933,19 +3958,6 @@ server <- function(input, output, session) {
                 res = 110
             )
 
-            output[[paste0(prefix, "_ridge_plot")]] <- renderPlot(
-                {
-                    validate_local_expression_ready()
-                    ridge_plot_obj()
-                },
-                height = function() {
-                    feature_n <- tryCatch(length(expression_resolution()$plot_features), error = function(e) 0L)
-                    group_n <- tryCatch(dplyr::n_distinct(tab_object()@meta.data[[tab_group_by()]]), error = function(e) 0L)
-                    expression_ridge_height_px(feature_n = feature_n, group_n = group_n)
-                },
-                res = 110
-            )
-
             output[[paste0(prefix, "_dot_plot")]] <- renderPlot(
                 {
                     validate_local_expression_ready()
@@ -4056,26 +4068,6 @@ server <- function(input, output, session) {
                         tab_label = tab_label,
                         integration_label = current_species_integration(species_key),
                         extra = list(atlas_export_type = "heatmap")
-                    )
-                }
-            )
-
-            output[[paste0("dl_", prefix, "_ridge")]] <- downloadHandler(
-                filename = function() {
-                    paste0(prefix, "_ridgeplot.", get_ext())
-                },
-                content = function(file) {
-                    feature_n <- length(expression_resolution()$plot_features)
-                    group_n <- dplyr::n_distinct(tab_object()@meta.data[[tab_group_by()]])
-
-                    save_ggplot(
-                        file = file,
-                        plot_obj = ridge_plot_obj(),
-                        width = 10,
-                        height = max(6, expression_ridge_height_px(feature_n, group_n) / 95),
-                        tab_label = tab_label,
-                        integration_label = current_species_integration(species_key),
-                        extra = list(atlas_export_type = "ridgeplot")
                     )
                 }
             )
@@ -5037,37 +5029,6 @@ server <- function(input, output, session) {
                 cache = "app"
             )
 
-            cross_ridge_plot_obj <- reactive({
-                resolution <- cross_resolution()
-                obj <- cross_object()
-
-                validate(
-                    need(
-                        length(resolution$plot_features) > 0,
-                        paste(
-                            "No selected genes resolve to features in the",
-                            cross_integration_label(cross_key),
-                            "integration."
-                        )
-                    )
-                )
-
-                build_expression_ridge_plot(
-                    obj = obj,
-                    feature_ids = resolution$plot_features,
-                    label_map = resolution$label_map,
-                    group_by = cross_group_by(),
-                    colorblind_safe = isTRUE(input$colorblind_safe)
-                )
-            }) %>% bindCache(
-                cross_key,
-                input$source_species %||% "medicago",
-                selected_source_genes(),
-                cross_group_by(),
-                isTRUE(input$colorblind_safe),
-                cache = "app"
-            )
-
             output[[paste0(prefix, "_umap_plot")]] <- renderPlot(
                 {
                     cross_umap_plot_obj()
@@ -5112,18 +5073,6 @@ server <- function(input, output, session) {
                 height = function() {
                     feature_n <- tryCatch(length(cross_resolution()$plot_features), error = function(e) 0L)
                     max(420, 110 + feature_n * 34)
-                },
-                res = 110
-            )
-
-            output[[paste0(prefix, "_ridge_plot")]] <- renderPlot(
-                {
-                    cross_ridge_plot_obj()
-                },
-                height = function() {
-                    feature_n <- tryCatch(length(cross_resolution()$plot_features), error = function(e) 0L)
-                    group_n <- tryCatch(dplyr::n_distinct(cross_object()@meta.data[[cross_group_by()]]), error = function(e) 0L)
-                    expression_ridge_height_px(feature_n = feature_n, group_n = group_n)
                 },
                 res = 110
             )
@@ -5206,26 +5155,6 @@ server <- function(input, output, session) {
                         tab_label = cross_integration_label(cross_key),
                         integration_label = cross_integration_label(cross_key),
                         extra = list(atlas_export_type = "heatmap")
-                    )
-                }
-            )
-
-            output[[paste0("dl_", prefix, "_ridge")]] <- downloadHandler(
-                filename = function() {
-                    paste0(prefix, "_ridgeplot.", get_ext())
-                },
-                content = function(file) {
-                    feature_n <- length(cross_resolution()$plot_features)
-                    group_n <- dplyr::n_distinct(cross_object()@meta.data[[cross_group_by()]])
-
-                    save_ggplot(
-                        file = file,
-                        plot_obj = cross_ridge_plot_obj(),
-                        width = 10,
-                        height = max(6, expression_ridge_height_px(feature_n, group_n) / 95),
-                        tab_label = cross_integration_label(cross_key),
-                        integration_label = cross_integration_label(cross_key),
-                        extra = list(atlas_export_type = "ridgeplot")
                     )
                 }
             )

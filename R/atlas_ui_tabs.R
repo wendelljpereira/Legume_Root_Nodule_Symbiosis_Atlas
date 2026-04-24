@@ -180,8 +180,12 @@ species_tab_ui <- function(species_key) {
                                 label = paste("Search", label, "genes"),
                                 choices = NULL,
                                 multiple = TRUE,
-                                options = gene_panel_selectize_options(enable_bulk = FALSE)
+                                options = gene_panel_selectize_options(enable_bulk = TRUE)
                             )
+                        ),
+                        div(
+                            class = "gene-panel-split-control",
+                            uiOutput(paste0(species_key, "_split_by_ui"))
                         ),
                         div(
                             class = "gene-action-row",
@@ -208,87 +212,66 @@ species_tab_ui <- function(species_key) {
                 )
             ),
             uiOutput(paste0(species_key, "_notice_ui")),
-            fluidRow(
-                column(
-                    width = 12,
-                    div(
-                        class = "option-group",
-                        uiOutput(paste0(species_key, "_split_by_ui"))
-                    )
-                )
-            ),
-            fluidRow(
-                column(
-                    width = 12,
-                    div(
-                        class = "plot-card permalink-panel",
-                        `data-permalink-panel` = paste0(species_key, "_umap"),
+            conditionalPanel(
+                condition = sprintf("output['%s_has_expression_plots']", species_key),
+                fluidRow(
+                    column(
+                        width = 12,
                         div(
-                            class = "plot-card-header",
-                            div(class = "plot-card-title", "Feature UMAPs"),
-                            plot_download_button(paste0("dl_", species_key, "_umap"))
-                        ),
-                        uiOutput(paste0(species_key, "_umap_plot_ui"))
+                            class = "plot-card permalink-panel",
+                            `data-permalink-panel` = paste0(species_key, "_umap"),
+                            div(
+                                class = "plot-card-header",
+                                div(class = "plot-card-title", "Feature UMAPs"),
+                                plot_download_button(paste0("dl_", species_key, "_umap"))
+                            ),
+                            uiOutput(paste0(species_key, "_umap_plot_ui"))
+                        )
                     )
-                )
-            ),
-            fluidRow(
-                column(
-                    width = 12,
-                    div(
-                        class = "plot-card permalink-panel",
-                        `data-permalink-panel` = paste0(species_key, "_violin"),
+                ),
+                fluidRow(
+                    column(
+                        width = 12,
                         div(
-                            class = "plot-card-header",
-                            div(class = "plot-card-title", "Expression violin plots"),
-                            plot_download_button(paste0("dl_", species_key, "_violin"))
-                        ),
-                        spinning_plot_output(paste0(species_key, "_violin_plot"), proxy_height = "520px")
+                            class = "plot-card permalink-panel",
+                            `data-permalink-panel` = paste0(species_key, "_violin"),
+                            div(
+                                class = "plot-card-header",
+                                div(class = "plot-card-title", "Expression violin plots"),
+                                plot_download_button(paste0("dl_", species_key, "_violin"))
+                            ),
+                            spinning_plot_output(paste0(species_key, "_violin_plot"), proxy_height = "520px")
+                        )
                     )
-                )
-            ),
-            fluidRow(
-                column(
-                    width = 12,
-                    div(
-                        class = "plot-card permalink-panel",
-                        `data-permalink-panel` = paste0(species_key, "_heatmap"),
+                ),
+                fluidRow(
+                    column(
+                        width = 12,
                         div(
-                            class = "plot-card-header",
-                            div(class = "plot-card-title", "Average expression by cluster"),
-                            plot_download_button(paste0("dl_", species_key, "_heatmap"))
-                        ),
-                        spinning_plot_output(paste0(species_key, "_heatmap_plot"), proxy_height = "520px")
+                            class = "plot-card permalink-panel",
+                            `data-permalink-panel` = paste0(species_key, "_heatmap"),
+                            div(
+                                class = "plot-card-header",
+                                div(class = "plot-card-title", "Scaled average expression by cluster"),
+                                plot_download_button(paste0("dl_", species_key, "_heatmap"))
+                            ),
+                            spinning_plot_output(paste0(species_key, "_heatmap_plot"), proxy_height = "520px")
+                        )
                     )
-                )
-            ),
-            fluidRow(
-                column(
-                    width = 12,
-                    div(
-                        class = "plot-card permalink-panel",
-                        `data-permalink-panel` = paste0(species_key, "_dot"),
+                ),
+                fluidRow(
+                    column(
+                        width = 12,
                         div(
-                            class = "plot-card-header",
-                            div(class = "plot-card-title", "Multi-gene dot plot"),
-                            plot_download_button(paste0("dl_", species_key, "_dot"))
-                        ),
-                        spinning_plot_output(paste0(species_key, "_dot_plot"), proxy_height = "420px")
-                    )
-                )
-            ),
-            fluidRow(
-                column(
-                    width = 12,
-                    div(
-                        class = "plot-card permalink-panel",
-                        `data-permalink-panel` = paste0(species_key, "_ridge"),
-                        div(
-                            class = "plot-card-header",
-                            div(class = "plot-card-title", "Expression ridge plots"),
-                            plot_download_button(paste0("dl_", species_key, "_ridge"))
-                        ),
-                        spinning_plot_output(paste0(species_key, "_ridge_plot"), proxy_height = "680px")
+                            class = "plot-card permalink-panel",
+                            `data-permalink-panel` = paste0(species_key, "_dot"),
+                            div(
+                                class = "plot-card-header",
+                                div(class = "plot-card-title", "Multi-gene dot plot"),
+                                plot_download_button(paste0("dl_", species_key, "_dot"))
+                            ),
+                            spinning_plot_output(paste0(species_key, "_dot_plot"), proxy_height = "420px")
+                        )
                     )
                 )
             )
@@ -521,7 +504,7 @@ cross_tab_ui <- function(cross_key) {
                         `data-permalink-panel` = paste0(prefix, "_heatmap"),
                         div(
                             class = "plot-card-header",
-                            div(class = "plot-card-title", "Average expression by cluster"),
+                            div(class = "plot-card-title", "Scaled average expression by cluster"),
                             plot_download_button(paste0("dl_", prefix, "_heatmap"))
                         ),
                         spinning_plot_output(paste0(prefix, "_heatmap_plot"), proxy_height = "520px")
@@ -548,21 +531,6 @@ cross_tab_ui <- function(cross_key) {
                         class = "table-card",
                         div(class = "plot-card-title", "Ortholog mapping summary"),
                         uiOutput(paste0(prefix, "_mapping_table_ui"))
-                    )
-                )
-            ),
-            fluidRow(
-                column(
-                    width = 12,
-                    div(
-                        class = "plot-card permalink-panel",
-                        `data-permalink-panel` = paste0(prefix, "_ridge"),
-                        div(
-                            class = "plot-card-header",
-                            div(class = "plot-card-title", "Expression ridge plots"),
-                            plot_download_button(paste0("dl_", prefix, "_ridge"))
-                        ),
-                        spinning_plot_output(paste0(prefix, "_ridge_plot"), proxy_height = "680px")
                     )
                 )
             )
