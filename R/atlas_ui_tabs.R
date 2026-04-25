@@ -227,8 +227,8 @@ species_tab_ui <- function(species_key) {
                             ),
                             uiOutput(paste0(species_key, "_umap_plot_ui"))
                         )
-                    )
-                ),
+                )
+            ),
                 fluidRow(
                     column(
                         width = 12,

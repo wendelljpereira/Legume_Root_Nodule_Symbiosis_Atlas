@@ -19,7 +19,7 @@ Cluster marker sections can add the top marker genes from a selected cluster to 
 This is useful for asking questions such as:
 
 - Which clusters express known nodulation markers?
-- Are marker genes spatially or transcriptionally concentrated?
+- Are marker genes transcriptionally concentrated in particular clusters?
 - Do candidate genes follow expected infected-cell, cortex, meristem, or primordium patterns?
 
 ## Practical Tips

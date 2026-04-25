@@ -14,8 +14,8 @@ scripts/build_atlas_context_summary.py
 *.pdf
 *.tsv
 *.png
-!docs/_static/screenshots/*.png
 *.csv
+!docs/_static/screenshots/*.png
 !annotations/cluster_annotations/*.csv
 .Rhistory
 Rplots.pdf

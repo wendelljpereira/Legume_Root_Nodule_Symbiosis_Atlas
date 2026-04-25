@@ -10,7 +10,7 @@ The app lets researchers search genes of interest, inspect expression across pub
 - Within-species expression exploration for *Medicago truncatula*, *Glycine max*, and *Lotus japonicus*.
 - Cross-species comparison through CAMEx and SATURN integrations.
 - Gene search using gene IDs and available annotations/synonyms.
-- Expression UMAPs, violin plots, averaged expression by cluster, dot plots, and ridge plots.
+- Expression UMAPs, violin plots, averaged expression by cluster, and dot plots.
 - Cluster marker tables and marker-to-gene-panel workflows.
 - Ortholog tracing for one-to-one, one-to-many, and missing mappings.
 - CSV-backed cluster annotations that can be edited without modifying Seurat RDS files.

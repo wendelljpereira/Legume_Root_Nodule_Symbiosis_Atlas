@@ -13,9 +13,8 @@
 - Cross-species mappings depend on the orthogroup table and integration feature coverage.
 - One-to-many orthogroups can inflate plotted feature counts and complicate interpretation.
 - Cluster labels are curated annotations of clustering outputs, not definitive cell-type assignments.
-- Sparse single-cell expression may be difficult to interpret in ridge/violin plots.
+- Sparse single-cell expression may be difficult to interpret in violin plots.
 - Public ShinyApps.io hosting may be constrained by bundle size and memory limits.
-- Spatial transcriptomics support is planned as an optional future extension, not part of the current release.
 
 ## Best-Practice Interpretation
 

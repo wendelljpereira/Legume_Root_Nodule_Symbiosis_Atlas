@@ -106,8 +106,6 @@ The user prefers that after each UI fix the app is hard-restarted and opened in 
 At the time this handoff was written, these local items were intentionally not committed:
 
 - `scripts/fix_medicago_feature_ids.R`
-- `spatial_data/`
-
 If the next session needs them, inspect locally before deciding whether they should be committed. They will not be available on another machine unless they are added and pushed separately.
 
 ## Recommended Prompt For Next Codex Session

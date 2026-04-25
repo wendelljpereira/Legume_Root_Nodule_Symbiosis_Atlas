@@ -3314,7 +3314,7 @@ server <- function(input, output, session) {
 	                source_species <- species_key
 	                reference_group_by <- tab_composition_cluster_by()
 	                split_by <- tab_split_by()
-	                pt_size <- max(2.0, as.numeric(input[[paste0(prefix, "_distribution_pt_size")]] %||% 1.1) * 1.8)
+	                pt_size <- as.numeric(input[[paste0(prefix, "_distribution_pt_size")]] %||% 1.1)
 	                split_enabled <- !identical(split_by, "none")
 	                feature_panel_n <- length(resolution$plot_features) + 1L
 	                plot_obj <- apply_metadata_display_order(obj, c(split_by, reference_group_by))
@@ -3340,6 +3340,7 @@ server <- function(input, output, session) {
 	                    plot_obj@meta.data[[reference_group_by]],
 	                    reference_group_by
 	                )
+	                feature_pt_size <- feature_umap_point_size(pt_size)
 
 	                reference_plot <- scCustomize::DimPlot_scCustom(
 	                    seurat_object = plot_obj,
@@ -3393,7 +3394,7 @@ server <- function(input, output, session) {
 	                        seurat_object = plot_obj,
 	                        features = feature_id,
                         split.by = if (split_enabled) split_by else NULL,
-                        pt.size = pt_size,
+                        pt.size = feature_pt_size,
                         order = TRUE,
                         raster = TRUE,
                         num_columns = split_columns,
@@ -4119,6 +4120,7 @@ server <- function(input, output, session) {
                     grDevices::dev.off()
                 }
             )
+
         })
     }
 
@@ -4782,7 +4784,7 @@ server <- function(input, output, session) {
                             obj = obj,
                             feature_id = spec$feature_id,
                             fixed_max = expression_max,
-                            pt_size = pt_size,
+                            pt_size = feature_umap_point_size(pt_size),
                             colorblind_safe = isTRUE(input$colorblind_safe),
                             expressing_size_boost = 0
                         ) +
@@ -4930,7 +4932,7 @@ server <- function(input, output, session) {
                                 expression_values = expr_list[[idx]],
                                 cell_ids = species_cells[[species_key]],
                                 fixed_max = expression_max,
-                                pt_size = pt_size,
+                                pt_size = feature_umap_point_size(pt_size),
                                 colorblind_safe = isTRUE(input$colorblind_safe),
                                 expressing_size_boost = 0
                             )

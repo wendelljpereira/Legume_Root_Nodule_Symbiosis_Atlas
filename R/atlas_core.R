@@ -566,6 +566,17 @@ sc_customize_feature_na_color <- function() {
     as.character(formals(scCustomize::FeaturePlot_scCustom)$na_color %||% "lightgray")
 }
 
+feature_umap_point_size <- function(pt_size) {
+    pt_size <- suppressWarnings(as.numeric(pt_size)[[1]])
+    if (!is.finite(pt_size)) {
+        pt_size <- 1
+    }
+
+    # Feature overlays need much smaller points than cluster maps in dense atlases;
+    # otherwise the expression layer visually swallows the UMAP structure.
+    min(0.22, max(0.015, pt_size * 0.10))
+}
+
 # Build a feature plot where expressing cells are drawn on top while
 # keeping the same point size as the background cells. This preserves
 # the species-restricted SATURN layout while matching scCustomize's
@@ -683,6 +694,8 @@ emphasized_feature_plot <- function(
 }
 
 empty_umap_message_plot <- function(message) {
+    message <- paste(strwrap(as.character(message), width = 68), collapse = "\n")
+
     ggplot() +
         annotate(
             "text",

@@ -2,7 +2,7 @@
 
 ## Feature UMAPs
 
-Feature UMAPs show where a gene or mapped feature is expressed across the embedding. They are best for spatial intuition across transcriptional neighborhoods.
+Feature UMAPs show where a gene or mapped feature is expressed across the embedding. They are best for seeing expression patterns across transcriptional neighborhoods.
 
 ## Violin Plots
 
