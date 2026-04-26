@@ -906,7 +906,7 @@ ui <- fluidPage(
             h1("An scRNA-seq atlas for determinate and indeterminate nodules, with cross-species comparison"),
             p(
                 class = "hero-text",
-                HTML("Search by gene ID or common name to compare expression across <em>Medicago truncatula</em>, <em>Glycine max</em>, <em>Lotus japonicus</em>, and the cross-species integration.")
+                HTML("Search by gene ID or common name to compare expression across <em>Medicago truncatula</em>, <em>Glycine max</em>, and <em>Lotus japonicus</em>.")
             ),
             div(
                 class = "hero-badge-row",
@@ -928,10 +928,11 @@ ui <- fluidPage(
                     p("These settings apply across the atlas while you move between native species tabs and the cross-species integrations.")
                 ),
                 fluidRow(
+                    class = "display-settings-row",
                     column(
                         width = 4,
                         div(
-                            class = "option-group",
+                            class = "option-group display-option-card",
                             selectInput(
                                 inputId = "dl_format",
                                 label = "Download format",
@@ -943,7 +944,7 @@ ui <- fluidPage(
                     column(
                         width = 4,
                         div(
-                            class = "option-group",
+                            class = "option-group display-option-card",
                             selectInput(
                                 inputId = "figure_preset",
                                 label = "Figure style",
@@ -953,17 +954,14 @@ ui <- fluidPage(
                                     "Publication" = "publication"
                                 ),
                                 selected = "publication"
-                            )
-                        )
-                    ),
-                    column(
-                        width = 4,
-                        div(
-                            class = "option-group option-toggle",
-                            checkboxInput(
-                                inputId = "colorblind_safe",
-                                label = "Colorblind-safe expression colors",
-                                value = FALSE
+                            ),
+                            div(
+                                class = "option-toggle",
+                                checkboxInput(
+                                    inputId = "colorblind_safe",
+                                    label = "Colorblind-safe expression colors",
+                                    value = FALSE
+                                )
                             )
                         )
                     )
@@ -984,19 +982,6 @@ ui <- fluidPage(
                                 div(class = "section-eyebrow", "Start here"),
                                 h2("Explore your genes of interest across the atlas"),
                                 p("Start with a species-specific tab to inspect native expression patterns, or use a cross-species tab when you want to compare ortholog-aware expression across legumes.")
-                            ),
-                            div(
-                                class = "alert-stack overview-landing-stack",
-                                notice_card(
-                                    title = "Within-species expression",
-                                    body = "Search for genes of interest, inspect where they are expressed in each species atlas, and use cluster markers to discover related candidates.",
-                                    tone = "info"
-                                ),
-                                notice_card(
-                                    title = "Cross-species comparison",
-                                    body = "Compare genes of interest through Camex or SATURN, choose the source species there, and review the ortholog mapping behind each plot.",
-                                    tone = "info"
-                                )
                             )
                         ),
                         div(
@@ -1005,7 +990,7 @@ ui <- fluidPage(
                                 class = "overview-feature-card",
                                 div(class = "overview-feature-step", "1"),
                                 h3("Start with a species"),
-                                p("Use the Medicago, Glycine, or Lotus tabs when you already know the native gene IDs you want to inspect.")
+                                p(HTML("Use the <em>Medicago truncatula</em>, <em>Glycine max</em>, or <em>Lotus japonicus</em> tabs when you already know the native gene IDs you want to inspect."))
                             ),
                             div(
                                 class = "overview-feature-card",
@@ -1017,7 +1002,7 @@ ui <- fluidPage(
                                 class = "overview-feature-card",
                                 div(class = "overview-feature-step", "3"),
                                 h3("Compare orthologs"),
-                                p("Move to Camex or SATURN to see how selected source genes resolve across orthogroups and cross-species feature spaces.")
+                                p("Move to SATURN to see how selected source genes resolve across orthogroups and cross-species feature spaces.")
                             ),
                             div(
                                 class = "overview-feature-card",
@@ -1036,7 +1021,7 @@ ui <- fluidPage(
                     species_tab_ui("glycine"),
                     species_tab_ui("lotus")
                 ),
-                lapply(cross_integration_keys, cross_tab_ui)
+                lapply(visible_cross_integration_keys, cross_tab_ui)
             )
         )
         ),
@@ -2739,9 +2724,23 @@ server <- function(input, output, session) {
                 marker_tbl <- marker_tbl %>%
                     filter(cluster_source == !!marker_source)
 
-                available_clusters <- unique(as.character(marker_tbl$cluster))
-                lookup_tbl <- tab_marker_lookup() %>%
+                marker_clusters <- unique(as.character(marker_tbl$cluster))
+                lookup_tbl_all <- tab_marker_lookup()
+                lookup_clusters <- unique(as.character(lookup_tbl_all$cluster))
+                available_clusters <- cluster_value_levels(c(marker_clusters, lookup_clusters))
+                lookup_tbl <- lookup_tbl_all %>%
                     filter(cluster %in% available_clusters)
+                missing_lookup_clusters <- setdiff(available_clusters, as.character(lookup_tbl$cluster))
+                if (length(missing_lookup_clusters)) {
+                    lookup_tbl <- bind_rows(
+                        lookup_tbl,
+                        tibble(
+                            cluster = missing_lookup_clusters,
+                            cluster_label = missing_lookup_clusters,
+                            choice_label = missing_lookup_clusters
+                        )
+                    )
+                }
 
                 if (!nrow(lookup_tbl)) {
                     return(setNames(cluster_value_levels(available_clusters), cluster_value_levels(available_clusters)))
@@ -2848,8 +2847,6 @@ server <- function(input, output, session) {
                     filter(cluster == !!cluster_id) %>%
                     arrange(p_val_adj, desc(avg_log2FC), desc(pct.1), gene)
 
-                validate(need(nrow(filtered_tbl) > 0, "No marker rows are available for the selected cluster."))
-
                 filtered_tbl
             })
 
@@ -2865,45 +2862,24 @@ server <- function(input, output, session) {
                     return(tags$p(class = "marker-status-hint is-working", busy_message))
                 }
 
-                cluster_choices <- tab_marker_choices()
-                marker_source <- tab_marker_source()
-                active_group_by <- tab_distribution_group_by()
-                current_cluster_label <- names(cluster_choices)[match(tab_marker_cluster(), unname(cluster_choices))]
-                current_cluster_label <- current_cluster_label[!is.na(current_cluster_label) & nzchar(current_cluster_label)][1] %||% tab_marker_cluster()
-                source_sentence <- if (marker_cluster_source_matches(marker_source, active_group_by)) {
-                    paste0("using ", marker_cluster_source_label(marker_source), ".")
-                } else {
-                    paste0(
-                        "using ",
-                        marker_cluster_source_label(marker_source),
-                        " because ",
-                        metadata_column_label(active_group_by),
-                        " is not a cached clustering solution."
-                    )
-                }
-
-                tags$p(
-                    class = "marker-status-hint",
-                    paste(
-                        "Showing markers for",
-                        current_cluster_label,
-                        source_sentence,
-                        "Top markers will be staged in this tab's Gene expression panel until you click Generate the expression plots."
-                    )
-                )
+                NULL
             })
 
             output[[paste0(prefix, "_markers_table")]] <- DT::renderDT({
                 marker_tbl <- tab_marker_table_raw()
 
-                display_tbl <- marker_tbl %>%
-                    transmute(
-                        gene = display_gene_labels(species_key, gene),
-                        avg_log2FC = avg_log2FC,
-                        pct.1 = pct.1,
-                        pct.2 = pct.2,
-                        p_val_adj = p_val_adj
-                    )
+                display_tbl <- if (nrow(marker_tbl)) {
+                    marker_tbl %>%
+                        transmute(
+                            gene = display_gene_labels(species_key, gene),
+                            avg_log2FC = avg_log2FC,
+                            pct.1 = pct.1,
+                            pct.2 = pct.2,
+                            p_val_adj = p_val_adj
+                        )
+                } else {
+                    tibble(gene = character(), avg_log2FC = numeric(), pct.1 = numeric(), pct.2 = numeric(), p_val_adj = numeric())
+                }
 
                 DT::datatable(
                     display_tbl,
@@ -2912,10 +2888,12 @@ server <- function(input, output, session) {
                     selection = "none",
                     class = "stripe hover order-column compact",
                     options = list(
-                        dom = "tip",
+                        dom = "ltip",
                         pageLength = 10,
+                        lengthMenu = list(c(10, 25, 50, 100, -1), c("10", "25", "50", "100", "All")),
                         autoWidth = TRUE,
-                        order = list(list(1, "desc"))
+                        order = list(list(1, "desc")),
+                        language = list(emptyTable = "No available markers")
                     )
                 ) %>%
                     DT::formatRound(columns = c("avg_log2FC", "pct.1", "pct.2"), digits = 3) %>%
@@ -3089,7 +3067,7 @@ server <- function(input, output, session) {
                 plot_obj <- apply_metadata_display_order(obj, c(group_by, split_by))
                 color_map <- distribution_color_map(plot_obj@meta.data[[group_by]], group_by)
                 colors_use <- unname(color_map)
-                show_cluster_labels <- is_cluster_distribution_group(group_by) && identical(split_by, "none")
+                show_cluster_labels <- is_cluster_distribution_group(group_by)
                 split_panels <- if (split_enabled) split_panel_count(plot_obj, split_by) else 1L
                 split_columns <- if (identical(split_by, "none")) {
                     NULL
@@ -3942,7 +3920,7 @@ server <- function(input, output, session) {
                 },
                 height = function() {
                     feature_n <- tryCatch(length(expression_resolution()$plot_features), error = function(e) 0L)
-                    max(320, 250 * feature_n)
+                    max(380, 300 * feature_n)
                 },
                 res = 110
             )
@@ -4046,7 +4024,7 @@ server <- function(input, output, session) {
                         file = file,
                         plot_obj = violin_plot_obj(),
                         width = 10,
-                        height = max(6, feature_n * 3.2),
+                        height = max(6.5, feature_n * 3.8),
                         tab_label = tab_label,
                         integration_label = current_species_integration(species_key),
                         extra = list(atlas_export_type = "violin")
@@ -4188,12 +4166,6 @@ server <- function(input, output, session) {
                                 div(
                                     class = "gene-action-row",
                                     actionButton(
-                                        inputId = "apply_gene_selection",
-                                        label = "Generate cross-species expression plots",
-                                        icon = icon("play"),
-                                        class = "btn btn-default apply-selection-btn"
-                                    ),
-                                    actionButton(
                                         inputId = "open_gene_import",
                                         label = "Import list...",
                                         icon = icon("file-import"),
@@ -4205,6 +4177,15 @@ server <- function(input, output, session) {
                                     `aria-live` = "polite",
                                     `aria-atomic` = "true",
                                     textOutput("gene_selection_status")
+                                ),
+                                div(
+                                    class = "gene-generate-row",
+                                    actionButton(
+                                        inputId = "apply_gene_selection",
+                                        label = "Generate cross-species expression plots",
+                                        icon = icon("play"),
+                                        class = "btn btn-default apply-selection-btn"
+                                    )
                                 )
                             )
                         ),
@@ -4214,7 +4195,7 @@ server <- function(input, output, session) {
                                 class = "option-group",
                                 tags$p(
                                     class = "marker-status-hint",
-                                    "This shared panel is used by both Camex and SATURN, so you can switch integrations without rebuilding the gene list."
+                                    "This shared panel is used by the integrated comparison workflow."
                                 )
                             )
                         )
@@ -4242,8 +4223,7 @@ server <- function(input, output, session) {
             })
 
             cross_distribution_group_choices_cached <- reactive({
-                get_cached_ui_choices(cross_key, "cross_distribution_group") %||%
-                    cross_distribution_group_choices(cross_object(), cross_key)
+                cross_distribution_group_choices(cross_object(), cross_key)
             })
 
             cross_distribution_split_choices_cached <- reactive({
@@ -4252,8 +4232,7 @@ server <- function(input, output, session) {
             })
 
             cross_composition_choices_cached <- reactive({
-                get_cached_ui_choices(cross_key, "cross_composition") %||%
-                    cross_composition_choices(cross_object())
+                cross_composition_choices(cross_object())
             })
 
             output[[paste0(prefix, "_group_by_ui")]] <- renderUI({
@@ -4285,6 +4264,27 @@ server <- function(input, output, session) {
                     cross_distribution_group_choices_cached(),
                     default = integration_cfg$default_group_by
                 )
+            })
+
+            cross_feature_reference_group_by <- reactive({
+                selected_group <- cross_dist_group_by()
+                obj <- cross_object()
+                available_cols <- colnames(obj@meta.data)
+
+                if (is_cluster_distribution_group(selected_group) && selected_group %in% available_cols) {
+                    return(selected_group)
+                }
+
+                cluster_candidates <- distribution_cluster_columns[distribution_cluster_columns %in% available_cols]
+                if (length(cluster_candidates)) {
+                    return(cluster_candidates[[1]])
+                }
+
+                if ("species" %in% available_cols) {
+                    return("species")
+                }
+
+                selected_group
             })
 
             cross_dist_split_by <- reactive({
@@ -4393,29 +4393,8 @@ server <- function(input, output, session) {
                 resolution <- cross_resolution()
                 feature_mode <- integration_cfg$feature_mode
                 source_species <- current_comparison_source_species()
-                render_summary <- cross_render_load_summary(resolution, source_species, cross_key)
 
-                intro_card <- if (identical(feature_mode, "medicago_space")) {
-                    notice_card(
-                        title = "Shared Medicago-space features",
-                        body = paste(
-                            cross_integration_label(cross_key),
-                            "stores a shared feature space represented with Medicago identifiers. Soybean and Lotus selections are projected to Medicago orthologs in this tab, and neighborhood overlap in the integrated embedding should be treated as comparative structure rather than proof of conserved cell states."
-                        ),
-                        tone = "info"
-                    )
-                } else {
-                    notice_card(
-                        title = paste(cross_integration_label(cross_key), "ortholog feature space"),
-                        body = paste(
-                            cross_integration_label(cross_key),
-                            "stores species-prefixed features. Source genes are resolved to ortholog features from Medicago, Glycine, and Lotus before the integrated plots are drawn, and the shared embedding should be interpreted as a comparative view rather than a one-to-one cell-state map."
-                        ),
-                        tone = "info"
-                    )
-                }
-
-                cards <- list(intro_card)
+                cards <- list()
 
                 if (!length(genes)) {
                     cards <- append(cards, list(
@@ -4516,34 +4495,8 @@ server <- function(input, output, session) {
                     ))
                 }
 
-                if (length(genes) &&
-                    (render_summary$panel_count > length(unique(genes)) ||
-                        render_summary$mapped_feature_count > length(unique(genes)))) {
-                    cards <- append(cards, list(
-                        notice_card(
-                            title = paste("Large orthogroup expansion in", cross_integration_label(cross_key)),
-                            body = tagList(
-                                tags$p(
-                                    sprintf(
-                                        "This view will render %s comparison blocks from %s selected source genes and %s mapped ortholog features. Large orthogroups can take longer to load, and very large mapped panels are trimmed by the rendering guardrail above.",
-                                        format(render_summary$panel_count, big.mark = ","),
-                                        format(length(unique(genes)), big.mark = ","),
-                                        format(render_summary$mapped_feature_count, big.mark = ",")
-                                    )
-                                ),
-                                if (length(render_summary$expansion_labels)) {
-                                    tags$p(
-                                        paste(
-                                            "Largest expansions:",
-                                            compact_gene_list(render_summary$expansion_labels, limit = 4),
-                                            "."
-                                        )
-                                    )
-                                }
-                            ),
-                            tone = "warning"
-                        )
-                    ))
+                if (!length(cards)) {
+                    return(NULL)
                 }
 
                 div(class = "alert-stack", tagList(cards))
@@ -4618,25 +4571,7 @@ server <- function(input, output, session) {
                 genes
             })
 
-            output[[paste0(prefix, "_ortholog_trace_notice_ui")]] <- renderUI({
-                selected_n <- length(selected_source_genes())
-
-                if (selected_n <= 10L) {
-                    return(NULL)
-                }
-
-                div(
-                    class = "alert-stack",
-                    notice_card(
-                        title = "Rendering the full ortholog trace",
-                        body = sprintf(
-                            "Showing all %d selected genes in the ortholog trace. Larger source panels and orthogroups now stay expanded here, so this section can take longer to render.",
-                            selected_n
-                        ),
-                        tone = "warning"
-                    )
-                )
-            })
+            output[[paste0(prefix, "_ortholog_trace_notice_ui")]] <- renderUI(NULL)
 
             ortholog_trace_specs <- reactive({
                 source_species <- current_comparison_source_species()
@@ -4828,8 +4763,10 @@ server <- function(input, output, session) {
                 resolution <- cross_resolution()
                 obj <- cross_object()
                 panel_specs <- cross_comparison_panel_specs(resolution, cross_key)
-                block_cols <- min(2L, max(1L, as.integer(input[[paste0(prefix, "_umap_columns")]] %||% 1L)))
+                block_cols <- 1L
                 pt_size <- max(0.65, as.numeric(input[[paste0(prefix, "_pt_size")]] %||% 0.45))
+                reference_group_by <- cross_feature_reference_group_by()
+                reference_is_cluster <- is_cluster_distribution_group(reference_group_by)
                 species_cells <- lapply(within_species_keys, function(species_key) {
                     cross_species_cell_ids(obj, species_key)
                 })
@@ -4847,11 +4784,12 @@ server <- function(input, output, session) {
                 )
 
                 reference_plot <- scCustomize::DimPlot_scCustom(
-                    seurat_object = apply_metadata_display_order(obj, "species"),
-                    colors_use = unname(distribution_color_map(obj@meta.data$species, "species")),
-                    group.by = "species",
+                    seurat_object = apply_metadata_display_order(obj, reference_group_by),
+                    colors_use = unname(distribution_color_map(obj@meta.data[[reference_group_by]], reference_group_by)),
+                    group.by = reference_group_by,
                     pt.size = max(0.45, pt_size * 0.85),
-                    label = FALSE,
+                    label = reference_is_cluster,
+                    repel = reference_is_cluster,
                     raster = TRUE
                 ) &
                     app_plot_theme() &
@@ -4868,7 +4806,7 @@ server <- function(input, output, session) {
 
                 reference_panel <- wrap_titled_plot(
                     plot_obj = reference_plot + labs(title = NULL, color = NULL),
-                    title = "Species overview"
+                    title = metadata_column_label(reference_group_by)
                 )
 
                 comparison_blocks <- lapply(seq_len(nrow(panel_specs)), function(panel_idx) {
@@ -4982,7 +4920,7 @@ server <- function(input, output, session) {
                 cross_key,
                 input$source_species %||% "medicago",
                 selected_source_genes(),
-                as.integer(input[[paste0(prefix, "_umap_columns")]] %||% 1L),
+                cross_feature_reference_group_by(),
                 as.numeric(input[[paste0(prefix, "_pt_size")]] %||% 0.45),
                 isTRUE(input$colorblind_safe),
                 cache = "app"
@@ -4991,6 +4929,7 @@ server <- function(input, output, session) {
             cross_dot_plot_obj <- reactive({
                 resolution <- cross_resolution()
                 obj <- cross_object()
+                cluster_by <- cross_feature_reference_group_by()
 
                 validate(
                     need(
@@ -5003,29 +4942,58 @@ server <- function(input, output, session) {
                     )
                 )
 
-                scCustomize::DotPlot_scCustom(
-                    seurat_object = obj,
-                    features = resolution$plot_features,
-                    group.by = cross_group_by()
-                ) +
-                    scale_x_discrete(labels = resolution$label_map) +
-                    app_plot_theme() +
-                    labs(x = NULL, y = NULL, color = "Scaled expression", size = "% expressing") +
-                    theme(
-                        panel.grid.major.y = element_blank(),
-                        axis.text.x = element_text(angle = 35, hjust = 1)
-                    )
+                validate(need(is_cluster_distribution_group(cluster_by), "Select a clustering option to summarize the dot plot by species-cluster."))
+
+                species_plots <- lapply(within_species_keys, function(species_key) {
+                    species_features <- resolution$plot_table %>%
+                        filter(target_species == !!species_key) %>%
+                        pull(feature_id) %>%
+                        unique()
+                    species_features <- species_features[species_features %in% rownames(get_cached_data_matrix(obj))]
+                    species_cells <- cross_species_cell_ids(obj, species_key)
+
+                    if (!length(species_features) || !length(species_cells)) {
+                        return(wrap_titled_plot(
+                            plot_obj = empty_umap_message_plot("No mapped features"),
+                            title = species_label(species_key)
+                        ))
+                    }
+
+                    species_obj <- subset(obj, cells = species_cells)
+                    species_label_map <- resolution$plot_table %>%
+                        filter(feature_id %in% species_features) %>%
+                        distinct(feature_id, target_display) %>%
+                        tibble::deframe()
+
+                    scCustomize::DotPlot_scCustom(
+                        seurat_object = species_obj,
+                        features = species_features,
+                        group.by = cluster_by
+                    ) +
+                        scale_x_discrete(labels = species_label_map) +
+                        app_plot_theme() +
+                        labs(x = NULL, y = metadata_column_label(cluster_by), color = "Scaled expression", size = "% expressing") +
+                        ggtitle(species_label(species_key)) +
+                        theme(
+                            panel.grid.major.y = element_blank(),
+                            plot.title = element_text(face = "bold", hjust = 0, colour = app_palette["text"]),
+                            axis.text.x = element_text(angle = 35, hjust = 1)
+                        )
+                })
+
+                wrap_plots(plotlist = species_plots, ncol = 1)
             }) %>% bindCache(
                 cross_key,
                 input$source_species %||% "medicago",
                 selected_source_genes(),
-                cross_group_by(),
+                cross_feature_reference_group_by(),
                 cache = "app"
             )
 
             cross_heatmap_plot_obj <- reactive({
                 resolution <- cross_resolution()
                 obj <- cross_object()
+                cluster_by <- cross_feature_reference_group_by()
 
                 validate(
                     need(
@@ -5038,18 +5006,47 @@ server <- function(input, output, session) {
                     )
                 )
 
-                build_expression_heatmap_plot(
-                    obj = obj,
-                    feature_ids = resolution$plot_features,
-                    label_map = resolution$label_map,
-                    group_by = cross_group_by(),
-                    colorblind_safe = isTRUE(input$colorblind_safe)
-                )
+                validate(need(is_cluster_distribution_group(cluster_by), "Select a clustering option to summarize heatmaps by species-cluster."))
+
+                species_plots <- lapply(within_species_keys, function(species_key) {
+                    species_features <- resolution$plot_table %>%
+                        filter(target_species == !!species_key) %>%
+                        pull(feature_id) %>%
+                        unique()
+                    species_features <- species_features[species_features %in% rownames(get_cached_data_matrix(obj))]
+                    species_cells <- cross_species_cell_ids(obj, species_key)
+
+                    if (!length(species_features) || !length(species_cells)) {
+                        return(wrap_titled_plot(
+                            plot_obj = empty_umap_message_plot("No mapped features"),
+                            title = species_label(species_key)
+                        ))
+                    }
+
+                    species_obj <- subset(obj, cells = species_cells)
+                    species_label_map <- resolution$plot_table %>%
+                        filter(feature_id %in% species_features) %>%
+                        distinct(feature_id, target_display) %>%
+                        tibble::deframe()
+
+                    wrap_titled_plot(
+                        plot_obj = build_expression_heatmap_plot(
+                            obj = species_obj,
+                            feature_ids = species_features,
+                            label_map = species_label_map,
+                            group_by = cluster_by,
+                            colorblind_safe = isTRUE(input$colorblind_safe)
+                        ),
+                        title = species_label(species_key)
+                    )
+                })
+
+                wrap_plots(plotlist = species_plots, ncol = 1)
             }) %>% bindCache(
                 cross_key,
                 input$source_species %||% "medicago",
                 selected_source_genes(),
-                cross_group_by(),
+                cross_feature_reference_group_by(),
                 isTRUE(input$colorblind_safe),
                 cache = "app"
             )
@@ -5061,7 +5058,7 @@ server <- function(input, output, session) {
                 height = function() {
                     panel_specs <- tryCatch(cross_comparison_panel_specs(cross_resolution(), cross_key), error = function(e) tibble())
                     panel_n <- nrow(panel_specs)
-                    block_cols <- min(2L, max(1L, as.integer(input[[paste0(prefix, "_umap_columns")]] %||% 1L)))
+                    block_cols <- 1L
                     row_units <- tryCatch({
                         block_units <- cross_comparison_height_units(panel_specs)
 
@@ -5076,7 +5073,7 @@ server <- function(input, output, session) {
                         return(560L)
                     }
 
-                    max(560L, as.integer(180L + sum(row_units) * 310L))
+                    max(720L, as.integer(180L + sum(row_units) * 380L))
                 },
                 res = 110
             )
@@ -5097,7 +5094,7 @@ server <- function(input, output, session) {
                 },
                 height = function() {
                     feature_n <- tryCatch(length(cross_resolution()$plot_features), error = function(e) 0L)
-                    max(420, 110 + feature_n * 34)
+                    max(760, 260 + feature_n * 48)
                 },
                 res = 110
             )
@@ -5108,7 +5105,7 @@ server <- function(input, output, session) {
                 },
                 height = function() {
                     feature_n <- tryCatch(length(cross_resolution()$plot_features), error = function(e) 0L)
-                    max(420, 95 * feature_n + 120)
+                    max(760, 260 + feature_n * 58)
                 },
                 res = 110
             )
@@ -5120,7 +5117,7 @@ server <- function(input, output, session) {
                 content = function(file) {
                     panel_specs <- cross_comparison_panel_specs(cross_resolution(), cross_key)
                     panel_n <- nrow(panel_specs)
-                    block_cols <- min(2L, max(1L, as.integer(input[[paste0(prefix, "_umap_columns")]] %||% 1L)))
+                    block_cols <- 1L
                     row_units <- cross_comparison_height_units(panel_specs)
 
                     if (length(row_units)) {
@@ -5132,7 +5129,7 @@ server <- function(input, output, session) {
                     } else {
                         6
                     }
-                    plot_width <- if (block_cols == 1L) 17 else 30
+                    plot_width <- 17
 
                     save_ggplot(
                         file = file,
@@ -5176,7 +5173,7 @@ server <- function(input, output, session) {
                         file = file,
                         plot_obj = cross_heatmap_plot_obj(),
                         width = 13,
-                        height = max(5.5, 1.8 + feature_n * 0.55),
+                        height = max(8, 2.5 + feature_n * 0.65),
                         tab_label = cross_integration_label(cross_key),
                         integration_label = cross_integration_label(cross_key),
                         extra = list(atlas_export_type = "heatmap")
@@ -5195,7 +5192,7 @@ server <- function(input, output, session) {
                         file = file,
                         plot_obj = cross_dot_plot_obj(),
                         width = 12,
-                        height = max(6, feature_n * 0.85 + 2),
+                        height = max(8, feature_n * 0.8 + 2.8),
                         tab_label = cross_integration_label(cross_key),
                         integration_label = cross_integration_label(cross_key),
                         extra = list(atlas_export_type = "dotplot")
@@ -5213,7 +5210,7 @@ server <- function(input, output, session) {
                 plot_obj <- apply_metadata_display_order(obj, c(group_by, split_by))
                 color_map <- distribution_color_map(plot_obj@meta.data[[group_by]], group_by)
                 colors_use <- unname(color_map)
-                show_cluster_labels <- is_cluster_distribution_group(group_by) && identical(split_by, "none")
+                show_cluster_labels <- is_cluster_distribution_group(group_by)
                 split_panels <- if (split_enabled) split_panel_count(plot_obj, split_by) else 1L
                 split_columns <- if (split_enabled) min(4L, split_panels) else NULL
 
@@ -5482,9 +5479,23 @@ server <- function(input, output, session) {
                 marker_tbl <- marker_tbl %>%
                     filter(cluster_source == !!marker_source)
 
-                available_clusters <- unique(as.character(marker_tbl$cluster))
-                lookup_tbl <- cross_marker_lookup() %>%
+                marker_clusters <- unique(as.character(marker_tbl$cluster))
+                lookup_tbl_all <- cross_marker_lookup()
+                lookup_clusters <- unique(as.character(lookup_tbl_all$cluster))
+                available_clusters <- cluster_value_levels(c(marker_clusters, lookup_clusters))
+                lookup_tbl <- lookup_tbl_all %>%
                     filter(cluster %in% available_clusters)
+                missing_lookup_clusters <- setdiff(available_clusters, as.character(lookup_tbl$cluster))
+                if (length(missing_lookup_clusters)) {
+                    lookup_tbl <- bind_rows(
+                        lookup_tbl,
+                        tibble(
+                            cluster = missing_lookup_clusters,
+                            cluster_label = missing_lookup_clusters,
+                            choice_label = missing_lookup_clusters
+                        )
+                    )
+                }
 
                 if (!nrow(lookup_tbl)) {
                     return(setNames(cluster_value_levels(available_clusters), cluster_value_levels(available_clusters)))
@@ -5654,8 +5665,6 @@ server <- function(input, output, session) {
                 filtered_tbl <- filtered_tbl %>%
                     arrange(p_val_adj, desc(avg_log2FC), desc(pct.1), gene)
 
-                validate(need(nrow(filtered_tbl) > 0, "No marker rows are available for the selected cluster."))
-
                 filtered_tbl
             })
 
@@ -5671,52 +5680,24 @@ server <- function(input, output, session) {
                     return(tags$p(class = "marker-status-hint is-working", busy_message))
                 }
 
-                source_species <- current_comparison_source_species()
-                cluster_choices <- cross_marker_choices()
-                marker_source <- cross_marker_source()
-                marker_species_filter <- cross_marker_species_filter()
-                active_group_by <- cross_dist_group_by()
-                current_cluster_label <- names(cluster_choices)[match(cross_marker_cluster(), unname(cluster_choices))]
-                current_cluster_label <- current_cluster_label[!is.na(current_cluster_label) & nzchar(current_cluster_label)][1] %||% cross_marker_cluster()
-                source_sentence <- if (marker_cluster_source_matches(marker_source, active_group_by)) {
-                    paste0("using ", marker_cluster_source_label(marker_source), ".")
-                } else {
-                    paste0(
-                        "using ",
-                        marker_cluster_source_label(marker_source),
-                        " because ",
-                        metadata_column_label(active_group_by),
-                        " is not a cached clustering solution."
-                    )
-                }
-                species_filter_sentence <- if (!identical(marker_species_filter, "all")) {
-                    paste0(" filtered to ", species_label(marker_species_filter), " marker features.")
-                } else {
-                    ""
-                }
-                tags$p(
-                    class = "marker-status-hint",
-                    sprintf(
-                        "Showing markers for %s %s%s Top markers will be mapped back into the %s gene expression panel and staged until you click Generate cross-species expression plots.",
-                        current_cluster_label,
-                        source_sentence,
-                        species_filter_sentence,
-                        species_label(source_species)
-                    )
-                )
+                NULL
             })
 
             output[[paste0(prefix, "_markers_table")]] <- DT::renderDT({
                 marker_tbl <- cross_marker_table_raw()
 
-                display_tbl <- marker_tbl %>%
-                    transmute(
-                        gene = display_cross_feature_labels(cross_key, gene),
-                        avg_log2FC = avg_log2FC,
-                        pct.1 = pct.1,
-                        pct.2 = pct.2,
-                        p_val_adj = p_val_adj
-                    )
+                display_tbl <- if (nrow(marker_tbl)) {
+                    marker_tbl %>%
+                        transmute(
+                            gene = display_cross_feature_labels(cross_key, gene),
+                            avg_log2FC = avg_log2FC,
+                            pct.1 = pct.1,
+                            pct.2 = pct.2,
+                            p_val_adj = p_val_adj
+                        )
+                } else {
+                    tibble(gene = character(), avg_log2FC = numeric(), pct.1 = numeric(), pct.2 = numeric(), p_val_adj = numeric())
+                }
 
                 DT::datatable(
                     display_tbl,
@@ -5725,10 +5706,12 @@ server <- function(input, output, session) {
                     selection = "none",
                     class = "stripe hover order-column compact",
                     options = list(
-                        dom = "tip",
+                        dom = "ltip",
                         pageLength = 10,
+                        lengthMenu = list(c(10, 25, 50, 100, -1), c("10", "25", "50", "100", "All")),
                         autoWidth = TRUE,
-                        order = list(list(1, "desc"))
+                        order = list(list(1, "desc")),
+                        language = list(emptyTable = "No available markers")
                     )
                 ) %>%
                     DT::formatRound(columns = c("avg_log2FC", "pct.1", "pct.2"), digits = 3) %>%

@@ -9,8 +9,7 @@ species_tab_ui <- function(species_key) {
             div(
                 class = "section-header",
                 div(class = "section-eyebrow", species_label_tag(species_key)),
-                h2(tagList(species_label_tag(species_key), " explorer")),
-                p("Explore this atlas with native genes and local cluster tools, then promote a local panel into the cross-species comparison workflow when you want to compare orthologs.")
+                h2(tagList(species_label_tag(species_key), " explorer"))
             ),
             div(
                 class = "atlas-control-row",
@@ -85,7 +84,7 @@ species_tab_ui <- function(species_key) {
             ),
             fluidRow(
                 column(
-                    width = 4,
+                    width = 3,
                     div(
                         class = "option-group",
                         uiOutput(paste0(species_key, "_composition_by_ui"))
@@ -106,11 +105,11 @@ species_tab_ui <- function(species_key) {
                 class = "subsection-header permalink-panel",
                 `data-permalink-panel` = paste0(species_key, "_markers"),
                 h3("Cluster markers"),
-                p("Review precomputed positive markers for the active clustering solution when marker tables are available for it, add the top hits to this species panel, or download the current cluster as CSV.")
+                p("Review precomputed positive markers for the active clustering, add the top genes to investigate their expression.")
             ),
             fluidRow(
                 column(
-                    width = 4,
+                    width = 3,
                     div(
                         class = "option-group",
                         uiOutput(paste0(species_key, "_marker_cluster_ui"))
@@ -131,7 +130,7 @@ species_tab_ui <- function(species_key) {
                     )
                 ),
                 column(
-                    width = 6,
+                    width = 4,
                     div(
                         class = "option-group marker-action-group",
                         div(
@@ -166,7 +165,7 @@ species_tab_ui <- function(species_key) {
             div(
                 class = "subsection-header",
                 h3("Gene expression"),
-                p("Add genes with the picker, or move ahead by using the selected cluster markers to populate this Gene expression panel and generate the plots.")
+                p("Add genes for evaluation, or move ahead by using the selected cluster markers to generate the plots.")
             ),
             fluidRow(
                 column(
@@ -177,7 +176,7 @@ species_tab_ui <- function(species_key) {
                             class = "gene-panel-picker",
                             selectizeInput(
                                 inputId = paste0(species_key, "_local_selected_genes"),
-                                label = paste("Search", label, "genes"),
+                                label = tagList("Search ", species_label_tag(species_key), " genes"),
                                 choices = NULL,
                                 multiple = TRUE,
                                 options = gene_panel_selectize_options(enable_bulk = TRUE)
@@ -190,12 +189,6 @@ species_tab_ui <- function(species_key) {
                         div(
                             class = "gene-action-row",
                             actionButton(
-                                inputId = paste0(species_key, "_apply_local_genes"),
-                                label = "Generate the expression plots",
-                                icon = icon("play"),
-                                class = "btn btn-default apply-selection-btn"
-                            ),
-                            actionButton(
                                 inputId = paste0(species_key, "_open_gene_import"),
                                 label = "Import list...",
                                 icon = icon("file-import"),
@@ -207,6 +200,15 @@ species_tab_ui <- function(species_key) {
                             `aria-live` = "polite",
                             `aria-atomic` = "true",
                             textOutput(paste0(species_key, "_local_gene_selection_status"))
+                        ),
+                        div(
+                            class = "gene-generate-row",
+                            actionButton(
+                                inputId = paste0(species_key, "_apply_local_genes"),
+                                label = "Generate the expression plots",
+                                icon = icon("play"),
+                                class = "btn btn-default apply-selection-btn"
+                            )
                         )
                     )
                 )
@@ -301,25 +303,27 @@ cross_tab_ui <- function(cross_key) {
                 h3("Cell distribution UMAP"),
                 p("Inspect cluster structure and species mixing in the integrated embedding.")
             ),
-            fluidRow(
+            div(
+                class = "atlas-control-row cross-control-row",
+                fluidRow(
                 column(
-                    width = 4,
+                    width = 3,
                     div(
-                        class = "option-group",
+                        class = "option-group atlas-control-card",
                         uiOutput(paste0(prefix, "_dist_group_by_ui"))
                     )
                 ),
                 column(
                     width = 4,
                     div(
-                        class = "option-group",
+                        class = "option-group atlas-control-card",
                         uiOutput(paste0(prefix, "_dist_split_by_ui"))
                     )
                 ),
                 column(
                     width = 4,
                     div(
-                        class = "option-group",
+                        class = "option-group atlas-control-card atlas-control-card-slider",
                         sliderInput(
                             inputId = paste0(prefix, "_dist_pt_size"),
                             label = "Distribution point size",
@@ -327,8 +331,10 @@ cross_tab_ui <- function(cross_key) {
                         )
                     )
                 )
+                )
             ),
             fluidRow(
+                class = "distribution-plot-row",
                 column(
                     width = 12,
                     div(
@@ -351,7 +357,7 @@ cross_tab_ui <- function(cross_key) {
             ),
             fluidRow(
                 column(
-                    width = 4,
+                    width = 3,
                     div(
                         class = "option-group",
                         uiOutput(paste0(prefix, "_composition_by_ui"))
@@ -372,7 +378,7 @@ cross_tab_ui <- function(cross_key) {
                 class = "subsection-header permalink-panel",
                 `data-permalink-panel` = paste0(prefix, "_markers"),
                 h3("Cluster markers"),
-                p("Review precomputed positive markers for the active clustering solution, optionally filter marker features by species, and add top hits to the Gene expression panel.")
+                p("Review precomputed positive markers for the active clustering, add the top genes to investigate their expression.")
             ),
             fluidRow(
                 column(
@@ -404,7 +410,7 @@ cross_tab_ui <- function(cross_key) {
                     )
                 ),
                 column(
-                    width = 5,
+                    width = 4,
                     div(
                         class = "option-group marker-action-group",
                         div(
@@ -457,24 +463,16 @@ cross_tab_ui <- function(cross_key) {
                             step = 0.05
                         )
                     )
-                ),
+                )
+            ),
+            fluidRow(
                 column(
-                    width = 4,
+                    width = 12,
                     div(
-                        class = "option-group",
-                        selectInput(
-                            inputId = paste0(prefix, "_umap_columns"),
-                            label = "Comparison panels per row",
-                            choices = c("1" = 1, "2" = 2),
-                            selected = 1
-                        )
-                    )
-                ),
-                column(
-                    width = 4,
-                    div(
-                        class = "option-group",
-                        uiOutput(paste0(prefix, "_group_by_ui"))
+                        class = "table-card permalink-panel",
+                        `data-permalink-panel` = paste0(prefix, "_mapping"),
+                        div(class = "plot-card-title", "Ortholog mapping summary"),
+                        uiOutput(paste0(prefix, "_mapping_table_ui"))
                     )
                 )
             ),
@@ -537,14 +535,6 @@ cross_tab_ui <- function(cross_key) {
                             plot_download_button(paste0("dl_", prefix, "_dot"))
                         ),
                         spinning_plot_output(paste0(prefix, "_dot_plot"), proxy_height = "420px")
-                    )
-                ),
-                column(
-                    width = 5,
-                    div(
-                        class = "table-card",
-                        div(class = "plot-card-title", "Ortholog mapping summary"),
-                        uiOutput(paste0(prefix, "_mapping_table_ui"))
                     )
                 )
             )

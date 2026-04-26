@@ -682,6 +682,28 @@ h4,
     background: var(--surface-alt);
 }
 
+.option-group .shiny-input-container {
+    width: 100% !important;
+    max-width: none !important;
+}
+
+.display-settings-row {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.display-settings-row [class*="col-"] {
+    display: flex;
+}
+
+.display-option-card {
+    flex: 1 1 auto;
+}
+
+.distribution-plot-row {
+    margin-top: 12px;
+}
+
 .atlas-control-row .row {
     display: flex;
     flex-wrap: wrap;
@@ -759,6 +781,7 @@ h4,
 
 .gene-panel-split-control {
     margin-top: 10px;
+    width: min(100%, 180px);
 }
 
 .gene-panel-split-control .form-group {
@@ -778,7 +801,6 @@ h4,
 
 .apply-selection-btn {
     width: 100%;
-    margin-top: 10px;
     font-weight: 600;
 }
 
@@ -1039,9 +1061,15 @@ h4,
 
 .marker-action-row {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    flex-wrap: nowrap;
     gap: 10px;
-    align-items: center;
+    align-items: stretch;
+}
+
+.marker-action-row .btn {
+    width: 100%;
+    text-align: center;
 }
 
 .marker-status-hint {
@@ -1538,10 +1566,18 @@ label,
     margin-top: 6px;
 }
 
+.gene-generate-row {
+    margin-top: 8px;
+}
+
 .gene-import-btn {
     border: 1px solid var(--border-strong);
     background: #ffffff;
     color: var(--text);
+    min-height: 36px;
+    padding: 8px 16px;
+    font-size: 15px;
+    font-weight: 600;
 }
 
 .gene-import-btn:hover,

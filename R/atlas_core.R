@@ -114,6 +114,7 @@ atlas_access_password <- Sys.getenv("ATLAS_ACCESS_PASSWORD", unset = "")
 atlas_access_required <- nzchar(atlas_access_password)
 
 cross_integration_keys <- c("camex", "saturn")
+visible_cross_integration_keys <- setdiff(cross_integration_keys, "camex")
 
 cross_integration_registry <- list(
     camex = list(
@@ -134,7 +135,7 @@ cross_integration_registry <- list(
         tab_title = "Cross-species integration (SATURN)",
         eyebrow = "Cross-species integration",
         section_title = "Shared expression space across the three species",
-        description = "This tab uses the SATURN integration object. Selected source genes resolve to ortholog features from all three species in the integrated SATURN feature space.",
+        description = "Selected source genes resolve to ortholog features from all three species in the integrated SATURN feature space.",
         path = "app_ready_integration/saturn/clustered_dataset.rds",
         slim_path = "app_ready_integration/saturn/clustered_dataset_app_slim.rds",
         umap3d_path = "app_ready_integration/saturn/umap3d_embeddings.rds",
@@ -572,9 +573,9 @@ feature_umap_point_size <- function(pt_size) {
         pt_size <- 1
     }
 
-    # Feature overlays need much smaller points than cluster maps in dense atlases;
-    # otherwise the expression layer visually swallows the UMAP structure.
-    min(0.22, max(0.015, pt_size * 0.10))
+    # Match the feature UMAP point size to the cell-distribution UMAP control so
+    # expression panels retain the same visual density as the reference map.
+    max(0.015, pt_size)
 }
 
 # Build a feature plot where expressing cells are drawn on top while
@@ -1140,7 +1141,6 @@ split_panel_count <- function(obj, split_by) {
 
 condition_level_order <- c(
     "Roots",
-    "roots",
     "0.5h",
     "6h",
     "24h",
@@ -1157,8 +1157,7 @@ condition_level_order <- c(
 )
 
 condition_root_palette <- c(
-    "Roots" = "#1B4332",
-    "roots" = "#1B4332"
+    "Roots" = "#1B4332"
 )
 
 condition_progression_palette <- c(
@@ -1241,6 +1240,9 @@ stable_label_palette <- function(values) {
 
 metadata_level_order <- function(values, column_name) {
     values_chr <- as.character(values)
+    if (column_name %in% c("Group", "condition", "time_point")) {
+        values_chr[values_chr == "roots"] <- "Roots"
+    }
     present_levels <- unique(values_chr[!is.na(values_chr) & nzchar(values_chr)])
 
     if (!length(present_levels)) {
@@ -1256,6 +1258,13 @@ metadata_level_order <- function(values, column_name) {
 
     if (column_name %in% c("Sample", "sample")) {
         return(sort(present_levels))
+    }
+
+    if (identical(column_name, "species")) {
+        return(c(
+            vapply(within_species_keys, species_label, character(1)),
+            sort(setdiff(present_levels, vapply(within_species_keys, species_label, character(1))))
+        ))
     }
 
     if (column_name %in% c(
@@ -1275,6 +1284,9 @@ metadata_level_order <- function(values, column_name) {
 
 order_metadata_values <- function(values, column_name) {
     values_chr <- as.character(values)
+    if (column_name %in% c("Group", "condition", "time_point")) {
+        values_chr[values_chr == "roots"] <- "Roots"
+    }
     ordered_levels <- metadata_level_order(values, column_name)
 
     factor(values_chr, levels = ordered_levels, ordered = TRUE)
@@ -1704,8 +1716,8 @@ add_species_caption <- function(plot_obj, species_key, sublabel = NULL) {
 
 ortholog_trace_height_px <- function(gene_n) {
     max(
-        420L,
-        as.integer(160L + max(1L, gene_n) * 270L)
+        620L,
+        as.integer(220L + max(1L, gene_n) * 420L)
     )
 }
 
@@ -4028,10 +4040,9 @@ cross_composition_choices <- function(obj) {
         }
     }
     maybe_add("Species", "species")
-    maybe_add("Cell class", "cell_class")
-    maybe_add("Condition", "condition")
-    maybe_add("Study", "study")
     maybe_add("Time point", "time_point")
+    maybe_add("Sample", "Sample")
+    maybe_add("Sample", "sample")
     choices
 }
 
