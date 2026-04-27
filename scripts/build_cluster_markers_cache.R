@@ -15,7 +15,7 @@ setwd(project_root)
 source("scripts/atlas_dataset_utils.R")
 
 within_species_keys <- c("medicago", "glycine", "lotus")
-integration_methods <- c("ComBat_BBKNN", "Seurat")
+integration_methods <- c("ComBat_BBKNN", "Seurat", "Saturn")
 cluster_markers_dir <- "metadata/cluster_markers"
 
 species_registry <- list(
@@ -23,21 +23,24 @@ species_registry <- list(
         label = "Medicago truncatula",
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/M_truncatula_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/M_truncatula_clustered_dataset.rds"
         )
     ),
     glycine = list(
         label = "Glycine max",
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/G_max_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/G_max_clustered_dataset.rds"
         )
     ),
     lotus = list(
         label = "Lotus japonicus",
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/L_japonicus_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/L_japonicus_clustered_dataset.rds"
         )
     )
 )

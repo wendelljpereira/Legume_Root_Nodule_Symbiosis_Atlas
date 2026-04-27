@@ -39,7 +39,8 @@ species_registry <- list(
         orthogroup_col = "medicago.fa",
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/M_truncatula_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/M_truncatula_clustered_dataset.rds"
         ),
         canonicalize = function(x) trimws(as.character(x))
     ),
@@ -48,7 +49,8 @@ species_registry <- list(
         orthogroup_col = "glycine.fa",
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/G_max_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/G_max_clustered_dataset.rds"
         ),
         canonicalize = function(x) trimws(as.character(x))
     ),
@@ -57,7 +59,8 @@ species_registry <- list(
         orthogroup_col = "lotus.fa",
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/L_japonicus_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/L_japonicus_clustered_dataset.rds"
         ),
         canonicalize = function(x) {
             x <- trimws(as.character(x))
@@ -153,7 +156,8 @@ species_choices <- c(
 
 integration_choices <- c(
     "ComBat/BBKNN" = "ComBat_BBKNN",
-    "Seurat" = "Seurat"
+    "Seurat" = "Seurat",
+    "SATURN" = "Saturn"
 )
 
 annotation_paths <- c(
@@ -1256,7 +1260,7 @@ metadata_level_order <- function(values, column_name) {
         ))
     }
 
-    if (column_name %in% c("Sample", "sample")) {
+    if (column_name %in% c("Sample", "sample", "sample_name")) {
         return(sort(present_levels))
     }
 
@@ -1614,6 +1618,30 @@ expression_feature_labels <- function(feature_ids, label_map = NULL) {
     stats::setNames(labels, feature_ids)
 }
 
+clustered_matrix_order <- function(mat, margin = c("row", "column")) {
+    margin <- match.arg(margin)
+    target_mat <- if (identical(margin, "row")) mat else t(mat)
+
+    if (nrow(target_mat) < 2L) {
+        return(seq_len(nrow(target_mat)))
+    }
+
+    target_mat <- as.matrix(target_mat)
+    target_mat[!is.finite(target_mat)] <- 0
+
+    distances <- tryCatch(stats::dist(target_mat), error = function(e) NULL)
+    if (is.null(distances)) {
+        return(seq_len(nrow(target_mat)))
+    }
+
+    tree <- tryCatch(stats::hclust(distances), error = function(e) NULL)
+    if (is.null(tree) || !length(tree$order)) {
+        return(seq_len(nrow(target_mat)))
+    }
+
+    tree$order
+}
+
 build_expression_heatmap_plot <- function(
     obj,
     feature_ids,
@@ -1634,6 +1662,10 @@ build_expression_heatmap_plot <- function(
 
     avg_expr_mat <- get_cached_average_expression_matrix(obj, feature_ids, group_by)
     scaled_expr_mat <- row_scale_average_expression_matrix(avg_expr_mat)
+    feature_order <- clustered_matrix_order(scaled_expr_mat, "row")
+    group_order <- clustered_matrix_order(scaled_expr_mat, "column")
+    scaled_expr_mat <- scaled_expr_mat[feature_order, group_order, drop = FALSE]
+    feature_ids <- rownames(scaled_expr_mat)
     group_levels <- colnames(scaled_expr_mat)
 
     if (!length(group_levels)) {
@@ -2312,12 +2344,22 @@ get_within_object <- function(species_key, integration_method) {
     })$object
 }
 
-compute_umap3d_matrix <- function(obj, dims = 30L, seed = 1234L) {
-    if (!("pca" %in% Reductions(obj))) {
+compute_umap3d_matrix <- function(obj, dims = 30L, seed = 1234L, reduction = NULL) {
+    reduction_candidates <- unique(c(
+        reduction,
+        "pca",
+        "saturn_latent_pca",
+        "integrated_pca",
+        "harmony"
+    ))
+    reduction_candidates <- reduction_candidates[!is.na(reduction_candidates) & nzchar(reduction_candidates)]
+    reduction_name <- reduction_candidates[reduction_candidates %in% Reductions(obj)][1]
+
+    if (is.na(reduction_name) || !length(reduction_name)) {
         stop("PCA coordinates are required to compute a 3D UMAP.")
     }
 
-    pca_embeddings <- Embeddings(obj, "pca")
+    pca_embeddings <- Embeddings(obj, reduction_name)
     dims_use <- seq_len(min(as.integer(dims), ncol(pca_embeddings)))
 
     if (length(dims_use) < 3L) {
@@ -2881,8 +2923,9 @@ cluster_markers_split_cache_paths <- function(dataset_key, top_n = FALSE) {
         return(character(0))
     }
 
-    expected_prefix <- paste0(dataset_key, "_markers_")
-    paths <- paths[startsWith(basename(paths), expected_prefix)]
+    expected_prefix <- paste0(tolower(dataset_key), "_markers_")
+    path_names <- basename(paths)
+    paths <- paths[startsWith(tolower(path_names), expected_prefix)]
     paths <- paths[grepl("\\.(csv|tsv)$", basename(paths), ignore.case = TRUE)]
 
     if (isTRUE(top_n)) {
@@ -2898,7 +2941,7 @@ marker_cluster_source_from_path <- function(path, dataset_key) {
     file_name <- basename(path)
 
     prefix <- paste0(dataset_key, "_markers_")
-    source_part <- if (startsWith(file_name, prefix)) {
+    source_part <- if (startsWith(tolower(file_name), tolower(prefix))) {
         substr(file_name, nchar(prefix) + 1L, nchar(file_name))
     } else {
         file_name
@@ -3957,13 +4000,19 @@ within_distribution_split_choices <- function(obj) {
     available_cols <- colnames(obj@meta.data)
     choices <- c("No split" = "none")
 
-    if ("Group" %in% available_cols) {
+    if ("time_point" %in% available_cols) {
+        choices <- c(choices, "Time point" = "time_point")
+    } else if ("Time point" %in% available_cols) {
+        choices <- c(choices, "Time point" = "Time point")
+    } else if ("Group" %in% available_cols) {
         choices <- c(choices, "Condition" = "Group")
     } else if ("condition" %in% available_cols) {
         choices <- c(choices, "Condition" = "condition")
     }
 
-    if ("Sample" %in% available_cols) {
+    if ("sample_name" %in% available_cols) {
+        choices <- c(choices, "Sample" = "sample_name")
+    } else if ("Sample" %in% available_cols) {
         choices <- c(choices, "Sample" = "Sample")
     } else if ("sample" %in% available_cols) {
         choices <- c(choices, "Sample" = "sample")
@@ -3973,30 +4022,20 @@ within_distribution_split_choices <- function(obj) {
 }
 
 within_feature_split_choices <- function(obj) {
-    available_cols <- colnames(obj@meta.data)
-    choices <- c("No split" = "none")
-
-    if ("Group" %in% available_cols) {
-        choices <- c(choices, "Condition" = "Group")
-    } else if ("condition" %in% available_cols) {
-        choices <- c(choices, "Condition" = "condition")
-    }
-
-    if ("Sample" %in% available_cols) {
-        choices <- c(choices, "Sample" = "Sample")
-    } else if ("sample" %in% available_cols) {
-        choices <- c(choices, "Sample" = "sample")
-    }
-
-    choices
+    within_distribution_split_choices(obj)
 }
 
 within_composition_choices <- function(obj) {
     available_cols <- colnames(obj@meta.data)
     choices <- character(0)
 
+    time_col <- pick_first_existing_col(obj@meta.data, c("time_point", "Time point"))
     condition_col <- pick_first_existing_col(obj@meta.data, c("Group", "condition"))
-    sample_col <- pick_first_existing_col(obj@meta.data, c("Sample", "sample"))
+    sample_col <- pick_first_existing_col(obj@meta.data, c("sample_name", "Sample", "sample"))
+
+    if (!is.na(time_col) && time_col %in% available_cols) {
+        choices <- c(choices, "Time point" = time_col)
+    }
 
     if (!is.na(condition_col) && condition_col %in% available_cols) {
         choices <- c(choices, "Condition" = condition_col)
@@ -4041,6 +4080,7 @@ cross_composition_choices <- function(obj) {
     }
     maybe_add("Species", "species")
     maybe_add("Time point", "time_point")
+    maybe_add("Sample", "sample_name")
     maybe_add("Sample", "Sample")
     maybe_add("Sample", "sample")
     choices

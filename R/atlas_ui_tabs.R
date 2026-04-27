@@ -451,22 +451,6 @@ cross_tab_ui <- function(cross_key) {
             uiOutput(paste0(prefix, "_comparison_panel_ui")),
             fluidRow(
                 column(
-                    width = 4,
-                    div(
-                        class = "option-group",
-                        sliderInput(
-                            inputId = paste0(prefix, "_pt_size"),
-                            label = "UMAP point size",
-                            min = 0.1,
-                            max = 2.5,
-                            value = 0.45,
-                            step = 0.05
-                        )
-                    )
-                )
-            ),
-            fluidRow(
-                column(
                     width = 12,
                     div(
                         class = "table-card permalink-panel",
@@ -478,21 +462,6 @@ cross_tab_ui <- function(cross_key) {
             ),
             uiOutput(paste0(prefix, "_notice_ui")),
             uiOutput(paste0(prefix, "_ortholog_trace_notice_ui")),
-            fluidRow(
-                column(
-                    width = 12,
-                    div(
-                        class = "plot-card permalink-panel",
-                        `data-permalink-panel` = paste0(prefix, "_ortholog_trace"),
-                        div(
-                            class = "plot-card-header",
-                            div(class = "plot-card-title", "Ortholog trace"),
-                            plot_download_button(paste0("dl_", prefix, "_ortholog_trace"))
-                        ),
-                        spinning_plot_output(paste0(prefix, "_ortholog_trace_plot"), proxy_height = "760px")
-                    )
-                )
-            ),
             fluidRow(
                 column(
                     width = 12,

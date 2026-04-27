@@ -14,7 +14,7 @@ source("scripts/atlas_dataset_utils.R")
 source("R/atlas_annotations.R")
 
 within_species_keys <- c("medicago", "glycine", "lotus")
-integration_methods <- c("ComBat_BBKNN", "Seurat")
+integration_methods <- c("ComBat_BBKNN", "Seurat", "Saturn")
 distribution_cluster_columns <- c("Rank_1st", "Rank_2nd", "Rank_3rd", "Rank_4th", "Rank_5th", "cluster_label")
 cluster_annotations_dir <- atlas_cluster_annotations_dir()
 celltype_overrides_dir <- atlas_legacy_celltype_overrides_dir()
@@ -23,19 +23,22 @@ species_registry <- list(
     medicago = list(
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/M_truncatula_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/M_truncatula_clustered_dataset.rds"
         )
     ),
     glycine = list(
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/G_max_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/G_max_clustered_dataset.rds"
         )
     ),
     lotus = list(
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/L_japonicus_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/L_japonicus_clustered_dataset.rds"
         )
     )
 )
@@ -160,13 +163,19 @@ within_distribution_split_choices_local <- function(obj) {
     available_cols <- colnames(obj@meta.data)
     choices <- c("No split" = "none")
 
-    if ("Group" %in% available_cols) {
+    if ("time_point" %in% available_cols) {
+        choices <- c(choices, "Time point" = "time_point")
+    } else if ("Time point" %in% available_cols) {
+        choices <- c(choices, "Time point" = "Time point")
+    } else if ("Group" %in% available_cols) {
         choices <- c(choices, "Condition" = "Group")
     } else if ("condition" %in% available_cols) {
         choices <- c(choices, "Condition" = "condition")
     }
 
-    if ("Sample" %in% available_cols) {
+    if ("sample_name" %in% available_cols) {
+        choices <- c(choices, "Sample" = "sample_name")
+    } else if ("Sample" %in% available_cols) {
         choices <- c(choices, "Sample" = "Sample")
     } else if ("sample" %in% available_cols) {
         choices <- c(choices, "Sample" = "sample")
@@ -183,8 +192,13 @@ within_composition_choices_local <- function(obj) {
     available_cols <- colnames(obj@meta.data)
     choices <- character(0)
 
+    time_col <- pick_first_existing_col(obj@meta.data, c("time_point", "Time point"))
     condition_col <- pick_first_existing_col(obj@meta.data, c("Group", "condition"))
-    sample_col <- pick_first_existing_col(obj@meta.data, c("Sample", "sample"))
+    sample_col <- pick_first_existing_col(obj@meta.data, c("sample_name", "Sample", "sample"))
+
+    if (!is.na(time_col) && time_col %in% available_cols) {
+        choices <- c(choices, "Time point" = time_col)
+    }
 
     if (!is.na(condition_col) && condition_col %in% available_cols) {
         choices <- c(choices, "Condition" = condition_col)
@@ -208,10 +222,10 @@ cross_composition_choices_local <- function(obj) {
     }
 
     maybe_add("Species", "species")
-    maybe_add("Cell class", "cell_class")
-    maybe_add("Condition", "condition")
-    maybe_add("Study", "study")
     maybe_add("Time point", "time_point")
+    maybe_add("Sample", "sample_name")
+    maybe_add("Sample", "Sample")
+    maybe_add("Sample", "sample")
     choices
 }
 

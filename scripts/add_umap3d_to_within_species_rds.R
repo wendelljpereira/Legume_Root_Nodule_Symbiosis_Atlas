@@ -10,11 +10,13 @@ within_three_d_reduction_name <- "umap3d"
 dataset_specs <- data.frame(
     species = c(
         "medicago", "glycine", "lotus",
+        "medicago", "glycine", "lotus",
         "medicago", "glycine", "lotus"
     ),
     integration_method = c(
         "ComBat_BBKNN", "ComBat_BBKNN", "ComBat_BBKNN",
-        "Seurat", "Seurat", "Seurat"
+        "Seurat", "Seurat", "Seurat",
+        "Saturn", "Saturn", "Saturn"
     ),
     path = c(
         "within_species_integrated_datasets/ComBat_BBKNN/M_truncatula_clustered_dataset.rds",
@@ -22,17 +24,30 @@ dataset_specs <- data.frame(
         "within_species_integrated_datasets/ComBat_BBKNN/L_japonicus_clustered_dataset.rds",
         "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds",
         "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds",
-        "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds"
+        "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds",
+        "within_species_integrated_datasets/Saturn/M_truncatula_clustered_dataset.rds",
+        "within_species_integrated_datasets/Saturn/G_max_clustered_dataset.rds",
+        "within_species_integrated_datasets/Saturn/L_japonicus_clustered_dataset.rds"
     ),
     stringsAsFactors = FALSE
 )
 
-compute_umap3d_matrix <- function(obj, dims = 30L, seed = 1234L) {
-    if (!("pca" %in% Reductions(obj))) {
+compute_umap3d_matrix <- function(obj, dims = 30L, seed = 1234L, reduction = NULL) {
+    reduction_candidates <- unique(c(
+        reduction,
+        "pca",
+        "saturn_latent_pca",
+        "integrated_pca",
+        "harmony"
+    ))
+    reduction_candidates <- reduction_candidates[!is.na(reduction_candidates) & nzchar(reduction_candidates)]
+    reduction_name <- reduction_candidates[reduction_candidates %in% Reductions(obj)][1]
+
+    if (is.na(reduction_name) || !length(reduction_name)) {
         stop("PCA coordinates are required to compute a 3D UMAP.")
     }
 
-    pca_embeddings <- Embeddings(obj, "pca")
+    pca_embeddings <- Embeddings(obj, reduction_name)
     dims_use <- seq_len(min(as.integer(dims), ncol(pca_embeddings)))
 
     if (length(dims_use) < 3L) {

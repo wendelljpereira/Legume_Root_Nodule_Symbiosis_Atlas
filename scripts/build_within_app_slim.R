@@ -53,6 +53,18 @@ within_specs <- list(
     lotus_seurat = list(
         label = "Lotus japonicus (Seurat)",
         path = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds"
+    ),
+    medicago_saturn = list(
+        label = "Medicago truncatula (SATURN)",
+        path = "within_species_integrated_datasets/Saturn/M_truncatula_clustered_dataset.rds"
+    ),
+    glycine_saturn = list(
+        label = "Glycine max (SATURN)",
+        path = "within_species_integrated_datasets/Saturn/G_max_clustered_dataset.rds"
+    ),
+    lotus_saturn = list(
+        label = "Lotus japonicus (SATURN)",
+        path = "within_species_integrated_datasets/Saturn/L_japonicus_clustered_dataset.rds"
     )
 )
 

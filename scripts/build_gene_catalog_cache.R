@@ -18,21 +18,24 @@ species_registry <- list(
     medicago = list(
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/M_truncatula_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/M_truncatula_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/M_truncatula_clustered_dataset.rds"
         ),
         canonicalize = function(x) trimws(as.character(x))
     ),
     glycine = list(
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/G_max_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/G_max_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/G_max_clustered_dataset.rds"
         ),
         canonicalize = function(x) trimws(as.character(x))
     ),
     lotus = list(
         within_paths = c(
             ComBat_BBKNN = "within_species_integrated_datasets/ComBat_BBKNN/L_japonicus_clustered_dataset.rds",
-            Seurat = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds"
+            Seurat = "within_species_integrated_datasets/Seurat/L_japonicus_clustered_dataset.rds",
+            Saturn = "within_species_integrated_datasets/Saturn/L_japonicus_clustered_dataset.rds"
         ),
         canonicalize = function(x) {
             x <- trimws(as.character(x))
@@ -47,7 +50,7 @@ annotation_paths <- c(
     lotus = "annotations/lotus_gene_annotations.tsv"
 )
 
-integration_methods <- c("ComBat_BBKNN", "Seurat")
+integration_methods <- c("ComBat_BBKNN", "Seurat", "Saturn")
 gene_catalog_cache_dir <- "metadata/gene_catalogs"
 cross_species_path <- "app_ready_integration/camex/clustered_dataset.rds"
 cross_species_slim_path <- "app_ready_integration/camex/clustered_dataset_app_slim.rds"

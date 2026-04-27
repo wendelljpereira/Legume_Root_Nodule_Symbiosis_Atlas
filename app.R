@@ -1263,13 +1263,106 @@ server <- function(input, output, session) {
         )
     })
 
+    cross_gene_choice_bundle <- reactive({
+        choice_rows <- bind_rows(lapply(within_species_keys, function(species_key) {
+            bundle <- build_gene_choices(species_key, current_species_integration(species_key))
+            as_tibble(bundle$choices %||% tibble()) %>%
+                mutate(
+                    source_species = species_key,
+                    label = paste0(label, " [", species_label(species_key), "]"),
+                    tokens = paste(tokens, species_label(species_key), species_key)
+                )
+        }))
+
+        if (!nrow(choice_rows)) {
+            return(list(
+                choices = tibble(value = character(0), label = character(0), tokens = character(0)),
+                tokens = character(0),
+                feature_ids = character(0),
+                source_by_feature = character(0)
+            ))
+        }
+
+        choice_rows <- choice_rows %>%
+            arrange(label) %>%
+            distinct(value, .keep_all = TRUE)
+
+        list(
+            choices = choice_rows %>% select(value, label, tokens),
+            tokens = choice_rows$tokens,
+            feature_ids = choice_rows$value,
+            source_by_feature = setNames(choice_rows$source_species, choice_rows$value)
+        )
+    })
+
+    selected_source_gene_table <- function(genes) {
+        genes <- unique(as.character(genes %||% character(0)))
+        genes <- genes[!is.na(genes) & nzchar(genes)]
+
+        if (!length(genes)) {
+            return(tibble(source_species = character(0), source_gene = character(0)))
+        }
+
+        source_by_feature <- cross_gene_choice_bundle()$source_by_feature %||% character(0)
+        gene_species <- unname(source_by_feature[genes])
+
+        tibble(
+            source_species = gene_species,
+            source_gene = genes
+        ) %>%
+            filter(!is.na(source_species) & source_species %in% within_species_keys)
+    }
+
+    resolve_cross_gene_selection <- function(genes, cross_key) {
+        gene_tbl <- selected_source_gene_table(genes)
+
+        empty_resolution <- list(
+            mapping = tibble(),
+            plot_table = tibble(),
+            plot_features = character(0),
+            label_map = c(),
+            no_orthogroup = character(0),
+            no_target_members = character(0),
+            missing_features = character(0),
+            multiplicity = tibble()
+        )
+
+        if (!nrow(gene_tbl)) {
+            return(empty_resolution)
+        }
+
+        pieces <- gene_tbl %>%
+            group_by(source_species) %>%
+            group_split() %>%
+            lapply(function(tbl) {
+                result <- resolve_cross_integration_mapping(
+                    source_species = tbl$source_species[[1]],
+                    source_genes = tbl$source_gene,
+                    cross_key = cross_key
+                )
+                result$mapping <- result$mapping %>% mutate(source_species = tbl$source_species[[1]], .before = 1)
+                result$plot_table <- result$plot_table %>% mutate(source_species = tbl$source_species[[1]], .before = 1)
+                result$multiplicity <- result$multiplicity %>% mutate(source_species = tbl$source_species[[1]], .before = 1)
+                result
+            })
+
+        list(
+            mapping = bind_rows(lapply(pieces, `[[`, "mapping")),
+            plot_table = bind_rows(lapply(pieces, `[[`, "plot_table")) %>%
+                distinct(source_species, feature_id, target_species, .keep_all = TRUE),
+            plot_features = unique(unlist(lapply(pieces, `[[`, "plot_features"), use.names = FALSE)),
+            label_map = unlist(lapply(pieces, `[[`, "label_map"), use.names = TRUE),
+            no_orthogroup = sort(unique(unlist(lapply(pieces, `[[`, "no_orthogroup"), use.names = FALSE))),
+            no_target_members = sort(unique(unlist(lapply(pieces, `[[`, "no_target_members"), use.names = FALSE))),
+            missing_features = sort(unique(unlist(lapply(pieces, `[[`, "missing_features"), use.names = FALSE))),
+            multiplicity = bind_rows(lapply(pieces, `[[`, "multiplicity"))
+        )
+    }
+
     observeEvent(
-        source_gene_catalog(),
+        cross_gene_choice_bundle(),
         {
-            choice_bundle <- build_gene_choices(
-                current_comparison_source_species(),
-                source_integration()
-            )
+            choice_bundle <- cross_gene_choice_bundle()
 
             current_selection <- isolate(staged_source_genes())
             current_applied_selection <- isolate(applied_selected_genes())
@@ -1283,8 +1376,8 @@ server <- function(input, output, session) {
             if (length(dropped_genes)) {
                 selection_notice(
                     paste0(
-                        "Dropped genes not present in the new source atlas: ",
-                        compact_display_gene_list(current_comparison_source_species(), dropped_genes, limit = 6)
+                        "Dropped genes not present in the loaded species atlases: ",
+                        paste(head(dropped_genes, 6), collapse = ", ")
                     )
                 )
                 showNotification(
@@ -1292,9 +1385,9 @@ server <- function(input, output, session) {
                         tags$strong("Some genes were removed from the panel."),
                         tags$br(),
                         sprintf(
-                            "%d gene(s) are not present in the new source atlas: %s",
+                            "%d gene(s) are not present in the loaded species atlases: %s",
                             length(dropped_genes),
-                            compact_display_gene_list(current_comparison_source_species(), dropped_genes, limit = 6)
+                            paste(head(dropped_genes, 6), collapse = ", ")
                         )
                     ),
                     type = "warning",
@@ -1557,14 +1650,11 @@ server <- function(input, output, session) {
     }, ignoreInit = FALSE)
 
     observe({
-        source_gene_catalog()
+        cross_gene_choice_bundle()
         pending <- pending_url_genes()
         if (is.null(pending) || !length(pending)) return()
 
-        bundle <- build_gene_choices(
-            current_comparison_source_species(),
-            source_integration()
-        )
+        bundle <- cross_gene_choice_bundle()
         valid_ids <- bundle$feature_ids %||% character(0)
         pending_valid <- intersect(pending, valid_ids)
         if (length(pending_valid)) {
@@ -1640,8 +1730,7 @@ server <- function(input, output, session) {
             return()
         }
 
-        source_species <- current_comparison_source_species()
-        bundle <- build_gene_choices(source_species, source_integration())
+        bundle <- cross_gene_choice_bundle()
         matched_ids <- match_gene_choices(bundle, query)
         current_selection <- isolate(staged_source_genes())
         new_matches <- setdiff(matched_ids, current_selection)
@@ -1654,7 +1743,7 @@ server <- function(input, output, session) {
 
         if (!length(matched_ids)) {
             showNotification(
-                sprintf("No genes in %s match \"%s\".", species_label(source_species), query),
+                sprintf("No genes in the loaded species atlases match \"%s\".", query),
                 type = "warning",
                 duration = 6
             )
@@ -1676,7 +1765,7 @@ server <- function(input, output, session) {
 
         showNotification(
             sprintf(
-                "Added %d gene(s) matching \"%s\" to the staged panel.",
+                "Added %d cross-species gene(s) matching \"%s\" to the staged panel.",
                 length(new_matches),
                 query
             ),
@@ -1715,10 +1804,10 @@ server <- function(input, output, session) {
         if (identical(target_key, "comparison")) {
             list(
                 target_key = "comparison",
-                species_key = current_comparison_source_species(),
-                integration_method = source_integration(),
+                species_key = "comparison",
+                integration_method = NULL,
                 panel_label = "cross-species Gene expression panel",
-                species_label = species_label(current_comparison_source_species()),
+                species_label = "the loaded species atlases",
                 replace_label = "Replace current Gene expression panel instead of appending"
             )
         } else {
@@ -1793,10 +1882,14 @@ server <- function(input, output, session) {
 
         target_key <- gene_import_target() %||% "comparison"
         context <- gene_import_context(target_key)
-        bundle <- build_gene_choices(
-            context$species_key,
-            context$integration_method
-        )
+        bundle <- if (identical(target_key, "comparison")) {
+            cross_gene_choice_bundle()
+        } else {
+            build_gene_choices(
+                context$species_key,
+                context$integration_method
+            )
+        }
         valid_ids <- bundle$feature_ids
 
         if (is.null(valid_ids)) valid_ids <- character(0)
@@ -1847,18 +1940,23 @@ server <- function(input, output, session) {
 
     source_orthogroup_status <- reactive({
         genes <- selected_source_genes()
+        gene_tbl <- selected_source_gene_table(genes)
 
-        if (!length(genes)) {
+        if (!nrow(gene_tbl)) {
             return(list(
                 with_orthogroup = character(0),
                 without_orthogroup = character(0)
             ))
         }
 
-        source_orthogroups <- resolve_source_orthogroups(
-            current_comparison_source_species(),
-            genes
-        )
+        source_orthogroups <- gene_tbl %>%
+            group_by(source_species) %>%
+            group_split() %>%
+            lapply(function(tbl) {
+                resolve_source_orthogroups(tbl$source_species[[1]], tbl$source_gene) %>%
+                    mutate(source_species = tbl$source_species[[1]], .before = 1)
+            }) %>%
+            bind_rows()
 
         genes_with_orthogroup <- source_orthogroups %>%
             filter(!is.na(orthogroup)) %>%
@@ -1867,25 +1965,22 @@ server <- function(input, output, session) {
 
         list(
             with_orthogroup = genes_with_orthogroup,
-            without_orthogroup = setdiff(genes, genes_with_orthogroup)
+            without_orthogroup = setdiff(gene_tbl$source_gene, genes_with_orthogroup)
         )
     })
 
     overview_cross_resolutions <- reactive({
-        source_species <- current_comparison_source_species()
         genes <- selected_source_genes()
         setNames(
             lapply(cross_integration_keys, function(cross_key) {
-                resolve_cross_integration_mapping(
-                    source_species = source_species,
-                    source_genes = genes,
-                    cross_key = cross_key
-                )
+                resolve_cross_gene_selection(genes, cross_key)
             }),
             cross_integration_keys
         )
     }) %>% bindCache(
-        current_comparison_source_species(),
+        current_species_integration("medicago"),
+        current_species_integration("glycine"),
+        current_species_integration("lotus"),
         selected_source_genes(),
         cache = "app"
     )
@@ -1968,15 +2063,31 @@ server <- function(input, output, session) {
             return(tibble())
         }
 
-        source_species <- current_comparison_source_species()
-        source_orthogroups <- resolve_source_orthogroups(source_species, genes) %>%
-            distinct(source_gene, orthogroup, .keep_all = TRUE) %>%
+        gene_tbl <- selected_source_gene_table(genes)
+
+        if (!nrow(gene_tbl)) {
+            return(tibble())
+        }
+
+        source_orthogroups <- gene_tbl %>%
+            group_by(source_species) %>%
+            group_split() %>%
+            lapply(function(tbl) {
+                resolve_source_orthogroups(tbl$source_species[[1]], tbl$source_gene) %>%
+                    mutate(source_species = tbl$source_species[[1]], .before = 1)
+            }) %>%
+            bind_rows() %>%
+            distinct(source_species, source_gene, orthogroup, .keep_all = TRUE) %>%
             arrange(match(source_gene, genes))
 
         source_orthogroups %>%
             mutate(
-                `Source species` = species_label(source_species),
-                `Source gene` = display_gene_labels(source_species, source_gene),
+                `Source species` = vapply(source_species, species_label, character(1)),
+                `Source gene` = purrr::map2_chr(
+                    source_species,
+                    source_gene,
+                    ~ display_gene_labels(.x, .y)[[1]]
+                ),
                 Orthogroup = ifelse(is.na(orthogroup), "No orthogroup", orthogroup),
                 Medicago = map_chr(orthogroup, ~ compact_display_gene_list("medicago", get_orthogroup_members(.x, "medicago"))),
                 `Glycine max` = map_chr(orthogroup, ~ compact_display_gene_list("glycine", get_orthogroup_members(.x, "glycine"))),
@@ -4119,13 +4230,14 @@ server <- function(input, output, session) {
 
             cross_resolution <- reactive({
                 req(cross_tab_is_active())
-                enforce_plot_feature_limit(resolve_cross_integration_mapping(
-                    source_species = current_comparison_source_species(),
-                    source_genes = selected_source_genes(),
+                enforce_plot_feature_limit(resolve_cross_gene_selection(
+                    genes = selected_source_genes(),
                     cross_key = cross_key
                 ))
             }) %>% bindCache(
-                current_comparison_source_species(),
+                current_species_integration("medicago"),
+                current_species_integration("glycine"),
+                current_species_integration("lotus"),
                 selected_source_genes(),
                 cross_key,
                 atlas_plot_feature_limit,
@@ -4140,20 +4252,7 @@ server <- function(input, output, session) {
                 tagList(
                     fluidRow(
                         column(
-                            width = 3,
-                            div(
-                                class = "option-group source-species-picker",
-                                shinyWidgets::pickerInput(
-                                    inputId = "source_species",
-                                    label = "Gene source species",
-                                    choices = species_choices,
-                                    selected = current_comparison_source_species(),
-                                    multiple = FALSE
-                                )
-                            )
-                        ),
-                        column(
-                            width = 6,
+                            width = 8,
                             div(
                                 class = "option-group",
                                 selectizeInput(
@@ -4188,16 +4287,6 @@ server <- function(input, output, session) {
                                     )
                                 )
                             )
-                        ),
-                        column(
-                            width = 3,
-                            div(
-                                class = "option-group",
-                                tags$p(
-                                    class = "marker-status-hint",
-                                    "This shared panel is used by the integrated comparison workflow."
-                                )
-                            )
                         )
                     )
                 )
@@ -4209,10 +4298,7 @@ server <- function(input, output, session) {
                 }
 
                 update_selected_genes_input(
-                    choice_bundle = build_gene_choices(
-                        current_comparison_source_species(),
-                        source_integration()
-                    ),
+                    choice_bundle = cross_gene_choice_bundle(),
                     selected = staged_source_genes()
                 )
             })
@@ -4340,7 +4426,9 @@ server <- function(input, output, session) {
 
             output[[paste0(prefix, "_dist_umap_plot_ui")]] <- renderUI({
                 split_by <- cross_dist_split_by()
-                has_3d <- identical(split_by, "none") && !is.null(get_cross_umap3d(cross_key))
+                has_3d <- identical(split_by, "none") &&
+                    !identical(cross_key, "saturn") &&
+                    !is.null(get_cross_umap3d(cross_key))
 
                 if (has_3d) {
                     div(
@@ -4392,7 +4480,6 @@ server <- function(input, output, session) {
                 genes <- selected_source_genes()
                 resolution <- cross_resolution()
                 feature_mode <- integration_cfg$feature_mode
-                source_species <- current_comparison_source_species()
 
                 cards <- list()
 
@@ -4415,7 +4502,7 @@ server <- function(input, output, session) {
                         notice_card(
                             title = "Selected genes without orthogroups",
                             body = paste(
-                                compact_display_gene_list(current_comparison_source_species(), resolution$no_orthogroup, limit = 8),
+                                compact_gene_list(resolution$no_orthogroup, limit = 8),
                                 "These genes are not represented in the current orthogroup table, so the cross-species panels cannot speak to them."
                             ),
                             tone = "warning"
@@ -4432,11 +4519,11 @@ server <- function(input, output, session) {
                                 "Orthogroups without mapped members"
                             },
                             body = if (identical(feature_mode, "medicago_space")) {
-                                compact_display_gene_list(current_comparison_source_species(), resolution$no_target_members, limit = 8)
+                                compact_gene_list(resolution$no_target_members, limit = 8)
                             } else {
                                 paste(
                                     "No ortholog members from Medicago, Glycine, or Lotus were found in the mapped orthogroups for:",
-                                    compact_display_gene_list(current_comparison_source_species(), resolution$no_target_members, limit = 8),
+                                    compact_gene_list(resolution$no_target_members, limit = 8),
                                     "Treat this as an orthogroup-content limit, not as evidence that the biology is absent in the other species."
                                 )
                             },
@@ -4450,7 +4537,7 @@ server <- function(input, output, session) {
                         notice_card(
                             title = paste("Mapped orthologs missing from the", cross_integration_label(cross_key), "feature set"),
                             body = paste(
-                                compact_display_gene_list(current_comparison_source_species(), resolution$missing_features, limit = 8),
+                                compact_gene_list(resolution$missing_features, limit = 8),
                                 "Orthologs were resolved but the integration feature set does not contain them. Treat this as feature-space coverage loss rather than proof of no expression."
                             ),
                             tone = "warning"
@@ -4461,9 +4548,14 @@ server <- function(input, output, session) {
                 if (nrow(resolution$multiplicity)) {
                     multiplicity_text <- resolution$multiplicity %>%
                         mutate(
-                            label = paste0(
-                                display_gene_labels(source_species, source_gene, include_gene_id_with_common = FALSE),
-                                " (", mapped_gene_count, " mapped features)"
+                            label = purrr::pmap_chr(
+                                list(source_species, source_gene, mapped_gene_count),
+                                function(species_key, gene_id, mapped_gene_count) {
+                                    paste0(
+                                        display_gene_labels(species_key, gene_id, include_gene_id_with_common = FALSE),
+                                        " (", mapped_gene_count, " mapped features)"
+                                    )
+                                }
                             )
                         ) %>%
                         pull(label)
@@ -4680,7 +4772,7 @@ server <- function(input, output, session) {
 
             ortholog_trace_plot_obj <- reactive({
                 row_specs <- ortholog_trace_specs()
-                pt_size <- max(0.65, as.numeric(input[[paste0(prefix, "_pt_size")]] %||% 0.45))
+                pt_size <- max(0.65, as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75))
 
                 row_plots <- lapply(row_specs, function(row_spec) {
                     expression_max <- max(unlist(lapply(row_spec$species_specs, function(spec) {
@@ -4764,7 +4856,7 @@ server <- function(input, output, session) {
                 obj <- cross_object()
                 panel_specs <- cross_comparison_panel_specs(resolution, cross_key)
                 block_cols <- 1L
-                pt_size <- max(0.65, as.numeric(input[[paste0(prefix, "_pt_size")]] %||% 0.45))
+                pt_size <- max(0.65, as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75))
                 reference_group_by <- cross_feature_reference_group_by()
                 reference_is_cluster <- is_cluster_distribution_group(reference_group_by)
                 species_cells <- lapply(within_species_keys, function(species_key) {
@@ -4918,10 +5010,12 @@ server <- function(input, output, session) {
                 wrap_plots(plotlist = comparison_blocks, ncol = block_cols)
             }) %>% bindCache(
                 cross_key,
-                input$source_species %||% "medicago",
+                current_species_integration("medicago"),
+                current_species_integration("glycine"),
+                current_species_integration("lotus"),
                 selected_source_genes(),
                 cross_feature_reference_group_by(),
-                as.numeric(input[[paste0(prefix, "_pt_size")]] %||% 0.45),
+                as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75),
                 isTRUE(input$colorblind_safe),
                 cache = "app"
             )
@@ -4965,26 +5059,42 @@ server <- function(input, output, session) {
                         distinct(feature_id, target_display) %>%
                         tibble::deframe()
 
+                    avg_expr_mat <- get_cached_average_expression_matrix(species_obj, species_features, cluster_by)
+                    feature_order <- clustered_matrix_order(avg_expr_mat, "row")
+                    cluster_order <- colnames(avg_expr_mat)[clustered_matrix_order(avg_expr_mat, "column")]
+                    species_features <- rownames(avg_expr_mat)[feature_order]
+
+                    if (length(cluster_order) > 1L) {
+                        species_obj@meta.data[[cluster_by]] <- factor(
+                            as.character(species_obj@meta.data[[cluster_by]]),
+                            levels = cluster_order,
+                            ordered = TRUE
+                        )
+                    }
+
                     scCustomize::DotPlot_scCustom(
                         seurat_object = species_obj,
                         features = species_features,
                         group.by = cluster_by
                     ) +
                         scale_x_discrete(labels = species_label_map) +
+                        coord_flip() +
                         app_plot_theme() +
-                        labs(x = NULL, y = metadata_column_label(cluster_by), color = "Scaled expression", size = "% expressing") +
+                        labs(x = metadata_column_label(cluster_by), y = NULL, color = "Scaled expression", size = "% expressing") +
                         ggtitle(species_label(species_key)) +
                         theme(
-                            panel.grid.major.y = element_blank(),
+                            panel.grid.major.x = element_blank(),
                             plot.title = element_text(face = "bold", hjust = 0, colour = app_palette["text"]),
-                            axis.text.x = element_text(angle = 35, hjust = 1)
+                            axis.text.x = element_text(angle = 0, hjust = 0.5)
                         )
                 })
 
                 wrap_plots(plotlist = species_plots, ncol = 1)
             }) %>% bindCache(
                 cross_key,
-                input$source_species %||% "medicago",
+                current_species_integration("medicago"),
+                current_species_integration("glycine"),
+                current_species_integration("lotus"),
                 selected_source_genes(),
                 cross_feature_reference_group_by(),
                 cache = "app"
@@ -5044,7 +5154,9 @@ server <- function(input, output, session) {
                 wrap_plots(plotlist = species_plots, ncol = 1)
             }) %>% bindCache(
                 cross_key,
-                input$source_species %||% "medicago",
+                current_species_integration("medicago"),
+                current_species_integration("glycine"),
+                current_species_integration("lotus"),
                 selected_source_genes(),
                 cross_feature_reference_group_by(),
                 isTRUE(input$colorblind_safe),
@@ -5723,15 +5835,13 @@ server <- function(input, output, session) {
                 marker_tbl <- cross_marker_table_raw() %>%
                     slice_head(n = cross_marker_top_n())
 
-                source_species <- current_comparison_source_species()
                 set_marker_job_message(
                     prefix,
                     sprintf(
-                        "Adding the top %d markers from the %s cluster in %s into the shared %s Gene expression panel...",
+                        "Adding the top %d markers from the %s cluster in %s into the shared Gene expression panel...",
                         nrow(marker_tbl),
                         cross_marker_cluster(),
-                        cross_integration_label(cross_key),
-                        species_label(source_species)
+                        cross_integration_label(cross_key)
                     )
                 )
                 session$sendCustomMessage("atlas_button_busy", list(
@@ -5747,25 +5857,23 @@ server <- function(input, output, session) {
                     }, once = TRUE),
                     add = TRUE
                 )
-                candidate_genes <- map_cross_marker_features_to_source_genes(
-                    cross_key = cross_key,
-                    feature_ids = marker_tbl$gene,
-                    source_species = source_species
-                )
+                parsed_marker_features <- parse_cross_feature_ids(marker_tbl$gene)
+                candidate_genes <- parsed_marker_features %>%
+                    filter(feature_species %in% within_species_keys, !is.na(feature_gene_id) & nzchar(feature_gene_id)) %>%
+                    pull(feature_gene_id) %>%
+                    unique()
+                candidate_genes <- unique(c(candidate_genes, marker_tbl$gene))
 
-                valid_source_ids <- build_gene_choices(
-                    source_species,
-                    source_integration()
-                )$feature_ids %||% character(0)
+                cross_bundle <- cross_gene_choice_bundle()
+                valid_source_ids <- cross_bundle$feature_ids %||% character(0)
 
                 genes_to_add <- unique(candidate_genes[candidate_genes %in% valid_source_ids])
 
                 if (!length(genes_to_add)) {
                     showNotification(
                         sprintf(
-                            "No top markers from this %s cluster could be mapped into the %s Gene expression panel.",
-                            cross_integration_label(cross_key),
-                            species_label(source_species)
+                            "No top markers from this %s cluster could be matched to a native gene in the loaded species atlases.",
+                            cross_integration_label(cross_key)
                         ),
                         type = "warning",
                         duration = 8
@@ -5776,10 +5884,7 @@ server <- function(input, output, session) {
                 updated_selection <- unique(c(staged_source_genes(), genes_to_add))
 
                 update_selected_genes_input(
-                    choice_bundle = build_gene_choices(
-                        source_species,
-                        source_integration()
-                    ),
+                    choice_bundle = cross_bundle,
                     selected = updated_selection
                 )
 
@@ -5789,7 +5894,7 @@ server <- function(input, output, session) {
                         "Added ",
                         length(genes_to_add),
                         " mapped marker gene(s) to the shared selection. Click Generate cross-species expression plots to refresh the cross-species views",
-                        if (skipped_n > 0) paste0("; ", skipped_n, " could not be mapped into the current source species.") else "."
+                        if (skipped_n > 0) paste0("; ", skipped_n, " could not be matched to a native gene in the loaded species atlases.") else "."
                     ),
                     type = "message",
                     duration = 6
