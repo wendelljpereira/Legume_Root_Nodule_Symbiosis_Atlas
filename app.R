@@ -3473,27 +3473,22 @@ server <- function(input, output, session) {
 	                        theme(plot.title = element_blank())
 	                }
 
-	                plot_list <- c(list(
-	                    wrap_titled_plot(
-	                        plot_obj = reference_plot,
-	                        title = metadata_column_label(reference_group_by)
-	                    )
-	                ), lapply(resolution$plot_features, function(feature_id) {
-	                    feature_plot_args <- list(
-	                        seurat_object = plot_obj,
-	                        features = feature_id,
-                        split.by = if (split_enabled) split_by else NULL,
-                        pt.size = feature_pt_size,
-                        order = TRUE,
-                        raster = TRUE,
-                        num_columns = split_columns,
-                        label = FALSE,
-                        combine = TRUE
+                plot_list <- c(list(
+                    wrap_titled_plot(
+                        plot_obj = reference_plot,
+                        title = metadata_column_label(reference_group_by)
                     )
-                    if (isTRUE(input$colorblind_safe)) {
-                        feature_plot_args$colors_use <- viridisLite::cividis(100, end = 0.95)
-                    }
-                    feature_plot <- do.call(scCustomize::FeaturePlot_scCustom, feature_plot_args)
+                ), lapply(resolution$plot_features, function(feature_id) {
+                    feature_plot <- emphasized_feature_plot(
+                        obj = plot_obj,
+                        feature_id = feature_id,
+                        split_by = if (split_enabled) split_by else NULL,
+                        pt_size = feature_pt_size,
+                        num_columns = split_columns,
+                        background_alpha = 0.12,
+                        expressing_size_boost = 2.4,
+                        colorblind_safe = isTRUE(input$colorblind_safe)
+                    )
 
                     feature_plot <- feature_plot &
                         labs(color = NULL) &
@@ -4252,7 +4247,7 @@ server <- function(input, output, session) {
                 tagList(
                     fluidRow(
                         column(
-                            width = 8,
+                            width = 12,
                             div(
                                 class = "option-group",
                                 selectizeInput(
@@ -5206,7 +5201,7 @@ server <- function(input, output, session) {
                 },
                 height = function() {
                     feature_n <- tryCatch(length(cross_resolution()$plot_features), error = function(e) 0L)
-                    max(760, 260 + feature_n * 48)
+                    max(1080L, 960L + feature_n * 44L)
                 },
                 res = 110
             )
@@ -5285,7 +5280,7 @@ server <- function(input, output, session) {
                         file = file,
                         plot_obj = cross_heatmap_plot_obj(),
                         width = 13,
-                        height = max(8, 2.5 + feature_n * 0.65),
+                        height = max(10.5, 9.6 + feature_n * 0.48),
                         tab_label = cross_integration_label(cross_key),
                         integration_label = cross_integration_label(cross_key),
                         extra = list(atlas_export_type = "heatmap")

@@ -129,6 +129,7 @@ When source Seurat objects change, rebuild slim app objects and generated caches
 
 ```bash
 Rscript scripts/build_within_app_slim.R
+Rscript scripts/add_umap3d_to_within_species_slim.R --overwrite
 Rscript scripts/build_cross_app_slim.R
 Rscript scripts/build_gene_catalog_cache.R
 Rscript scripts/build_cluster_markers_cache.R
@@ -138,6 +139,8 @@ Rscript scripts/build_atlas_summary_cache.R
 Rscript scripts/build_startup_ui_cache.R
 Rscript scripts/smoke_test.R
 ```
+
+The `add_umap3d_to_within_species_slim.R` step precomputes 3D UMAP coordinates from the PCA-like reductions already stored in the full within-species objects and writes them into the slim app files. Keep this out of app startup so the browser only reads static coordinates.
 
 For the strict pre-release gate:
 

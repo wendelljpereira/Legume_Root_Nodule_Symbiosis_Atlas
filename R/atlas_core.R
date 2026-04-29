@@ -582,10 +582,9 @@ feature_umap_point_size <- function(pt_size) {
     max(0.015, pt_size)
 }
 
-# Build a feature plot where expressing cells are drawn on top while
-# keeping the same point size as the background cells. This preserves
-# the species-restricted SATURN layout while matching scCustomize's
-# default feature color scale.
+# Build a feature plot where expressing cells are drawn on top. The
+# background keeps the atlas context, while expressed cells get enough
+# contrast to remain visible in sparse gene panels.
 emphasized_feature_plot <- function(
     obj,
     feature_id,
@@ -595,10 +594,11 @@ emphasized_feature_plot <- function(
     cell_ids = NULL,
     fixed_max = NULL,
     pt_size = 0.45,
+    num_columns = NULL,
     colors_use = NULL,
     zero_color = NULL,
-    expressing_size_boost = 1.8,
-    background_alpha = 0.22,
+    expressing_size_boost = 2.4,
+    background_alpha = 0.14,
     colorblind_safe = FALSE
 ) {
     available_reductions <- Reductions(obj)
@@ -678,7 +678,7 @@ emphasized_feature_plot <- function(
         geom_point(
             data = dplyr::filter(coord_df, .data$.is_expressing),
             aes(color = .data$.expression, alpha = .data$.alpha),
-            size = pt_size,
+            size = max(pt_size, pt_size * expressing_size_boost),
             stroke = 0,
             shape = 16
         ) +
@@ -692,7 +692,7 @@ emphasized_feature_plot <- function(
     )
 
     if (use_split) {
-        p <- p + facet_wrap(~ .split)
+        p <- p + facet_wrap(~ .split, ncol = num_columns)
     }
 
     p
@@ -1041,11 +1041,11 @@ feature_umap_height_px <- function(feature_n, feature_cols, split_by = "none", p
 
     if (identical(split_by, "none")) {
         feature_rows <- ceiling(feature_n / feature_cols)
-        return(max(560L, as.integer(ceiling(feature_rows * 400L))))
+        return(max(640L, as.integer(ceiling(feature_rows * 430L))))
     }
 
     rows_per_gene <- ceiling(max(1L, as.integer(panels_per_gene %||% 1L)) / feature_cols)
-    max(700L, as.integer(ceiling(feature_n * (rows_per_gene * 280 + 120))))
+    max(760L, as.integer(ceiling(feature_n * (rows_per_gene * 320 + 140))))
 }
 
 feature_umap_height_inches <- function(feature_n, feature_cols, split_by = "none", panels_per_gene = 1L) {
@@ -1150,12 +1150,13 @@ condition_level_order <- c(
     "24h",
     "48h",
     "96h",
+    "14d",
     "5dpi",
     "10dpi",
     "12dpi",
     "14dpi",
     "15dpi",
-    "14d",
+    "21dpi",
     "21pdi",
     "28dpi"
 )
@@ -1244,7 +1245,7 @@ stable_label_palette <- function(values) {
 
 metadata_level_order <- function(values, column_name) {
     values_chr <- as.character(values)
-    if (column_name %in% c("Group", "condition", "time_point")) {
+    if (column_name %in% c("Group", "condition", "time_point", "Time point")) {
         values_chr[values_chr == "roots"] <- "Roots"
     }
     present_levels <- unique(values_chr[!is.na(values_chr) & nzchar(values_chr)])
@@ -1253,7 +1254,7 @@ metadata_level_order <- function(values, column_name) {
         return(character(0))
     }
 
-    if (column_name %in% c("Group", "condition")) {
+    if (column_name %in% c("Group", "condition", "time_point", "Time point")) {
         return(c(
             condition_level_order[condition_level_order %in% present_levels],
             sort(setdiff(present_levels, condition_level_order))
@@ -1288,7 +1289,7 @@ metadata_level_order <- function(values, column_name) {
 
 order_metadata_values <- function(values, column_name) {
     values_chr <- as.character(values)
-    if (column_name %in% c("Group", "condition", "time_point")) {
+    if (column_name %in% c("Group", "condition", "time_point", "Time point")) {
         values_chr[values_chr == "roots"] <- "Roots"
     }
     ordered_levels <- metadata_level_order(values, column_name)
@@ -1351,11 +1352,11 @@ metadata_colors_use <- function(values, column_name) {
         }
     }
 
-    if (column_name %in% c("Group", "condition")) {
+    if (column_name %in% c("Group", "condition", "time_point", "Time point")) {
         return(condition_color_map(values, column_name))
     }
 
-    if (column_name %in% c("Sample", "sample")) {
+    if (column_name %in% c("Sample", "sample", "sample_name")) {
         palette_values <- distribution_sample_palette[seq_len(min(length(ordered_levels), length(distribution_sample_palette)))]
 
         if (length(ordered_levels) > length(distribution_sample_palette)) {
@@ -1388,11 +1389,11 @@ composition_colors_use <- function(values, column_name) {
         return(NULL)
     }
 
-    if (column_name %in% c("Group", "condition")) {
+    if (column_name %in% c("Group", "condition", "time_point", "Time point")) {
         return(condition_color_map(values, column_name))
     }
 
-    if (column_name %in% c("Sample", "sample")) {
+    if (column_name %in% c("Sample", "sample", "sample_name")) {
         palette_values <- metadata_colors_use(values, column_name)
         if (!is.null(palette_values)) return(palette_values)
     }
@@ -1880,7 +1881,31 @@ apply_celltype_override <- function(obj, override_id) {
     )
 }
 
+harmonize_within_metadata <- function(obj, override_id = NULL) {
+    if (!identical(override_id, "lotus_Saturn") || !("time_point" %in% colnames(obj@meta.data))) {
+        return(obj)
+    }
+
+    root_idx <- rep(FALSE, nrow(obj@meta.data))
+    if ("condition" %in% colnames(obj@meta.data)) {
+        root_idx <- root_idx | as.character(obj@meta.data$condition) %in% c("WT_mock", "Mock", "mock", "Roots")
+    }
+
+    for (column_name in intersect(c("Group", "sample_name", "Sample", "sample", "orig.ident"), colnames(obj@meta.data))) {
+        root_idx <- root_idx | grepl("root|mock", as.character(obj@meta.data[[column_name]]), ignore.case = TRUE)
+    }
+
+    if (any(root_idx, na.rm = TRUE)) {
+        time_point <- as.character(obj@meta.data$time_point)
+        time_point[root_idx] <- "Roots"
+        obj$time_point <- time_point
+    }
+
+    obj
+}
+
 prepare_within_object <- function(obj, override_id = NULL) {
+    obj <- harmonize_within_metadata(obj, override_id)
     obj <- apply_celltype_override(obj, override_id)
     obj <- apply_metadata_display_order(obj, colnames(obj@meta.data))
     obj
@@ -2344,46 +2369,6 @@ get_within_object <- function(species_key, integration_method) {
     })$object
 }
 
-compute_umap3d_matrix <- function(obj, dims = 30L, seed = 1234L, reduction = NULL) {
-    reduction_candidates <- unique(c(
-        reduction,
-        "pca",
-        "saturn_latent_pca",
-        "integrated_pca",
-        "harmony"
-    ))
-    reduction_candidates <- reduction_candidates[!is.na(reduction_candidates) & nzchar(reduction_candidates)]
-    reduction_name <- reduction_candidates[reduction_candidates %in% Reductions(obj)][1]
-
-    if (is.na(reduction_name) || !length(reduction_name)) {
-        stop("PCA coordinates are required to compute a 3D UMAP.")
-    }
-
-    pca_embeddings <- Embeddings(obj, reduction_name)
-    dims_use <- seq_len(min(as.integer(dims), ncol(pca_embeddings)))
-
-    if (length(dims_use) < 3L) {
-        stop("At least three PCA dimensions are required to compute a 3D UMAP.")
-    }
-
-    set.seed(seed)
-    embedding <- uwot::umap(
-        X = pca_embeddings[, dims_use, drop = FALSE],
-        n_components = 3L,
-        n_neighbors = 30,
-        min_dist = 0.3,
-        metric = "cosine",
-        init = "spectral",
-        ret_model = FALSE,
-        verbose = FALSE,
-        n_threads = max(1L, min(4L, parallel::detectCores(logical = TRUE) - 1L))
-    )
-
-    rownames(embedding) <- rownames(pca_embeddings)
-    colnames(embedding) <- paste0("UMAP3D_", seq_len(ncol(embedding)))
-    embedding
-}
-
 get_within_umap3d <- function(species_key, integration_method) {
     cache_key <- paste("within_umap3d", species_key, integration_method, sep = "::")
 
@@ -2396,7 +2381,15 @@ get_within_umap3d <- function(species_key, integration_method) {
             return(Embeddings(obj, reduction_name)[, seq_len(3), drop = FALSE])
         }
 
-        compute_umap3d_matrix(obj)
+        stop(
+            sprintf(
+                "Precomputed 3D UMAP coordinates are missing for %s (%s). Run Rscript scripts/add_umap3d_to_within_species_slim.R %s --overwrite to update the slim app files.",
+                species_registry[[species_key]]$label,
+                integration_method,
+                integration_method
+            ),
+            call. = FALSE
+        )
     })
 }
 
@@ -2446,7 +2439,7 @@ get_cross_umap3d <- function(cross_key) {
             return(cached_embedding)
         }
 
-        tryCatch(compute_umap3d_matrix(obj), error = function(e) NULL)
+        NULL
     })
 }
 
@@ -3979,19 +3972,16 @@ within_group_choices <- function(obj) {
         }
     }
 
-    maybe_add("Clustering opt 1 label", "Rank_1st_label")
-    maybe_add("Clustering opt 2 label", "Rank_2nd_label")
-    maybe_add("Clustering opt 3 label", "Rank_3rd_label")
-    maybe_add("Clustering opt 4 label", "Rank_4th_label")
-    maybe_add("Clustering opt 5 label", "Rank_5th_label")
     maybe_add("Clustering opt 1", "Rank_1st")
     maybe_add("Clustering opt 2", "Rank_2nd")
     maybe_add("Clustering opt 3", "Rank_3rd")
     maybe_add("Clustering opt 4", "Rank_4th")
     maybe_add("Clustering opt 5", "Rank_5th")
-    maybe_add("Cluster", "cluster_label")
-    maybe_add("Condition", "Group")
-    maybe_add("Sample", "Sample")
+    maybe_add("Time point", "time_point")
+    maybe_add("Time point", "Time point")
+    maybe_add("Samples", "sample_name")
+    maybe_add("Samples", "Sample")
+    maybe_add("Samples", "sample")
 
     choices
 }
@@ -4005,17 +3995,17 @@ within_distribution_split_choices <- function(obj) {
     } else if ("Time point" %in% available_cols) {
         choices <- c(choices, "Time point" = "Time point")
     } else if ("Group" %in% available_cols) {
-        choices <- c(choices, "Condition" = "Group")
+        choices <- c(choices, "Time point" = "Group")
     } else if ("condition" %in% available_cols) {
-        choices <- c(choices, "Condition" = "condition")
+        choices <- c(choices, "Time point" = "condition")
     }
 
     if ("sample_name" %in% available_cols) {
-        choices <- c(choices, "Sample" = "sample_name")
+        choices <- c(choices, "Samples" = "sample_name")
     } else if ("Sample" %in% available_cols) {
-        choices <- c(choices, "Sample" = "Sample")
+        choices <- c(choices, "Samples" = "Sample")
     } else if ("sample" %in% available_cols) {
-        choices <- c(choices, "Sample" = "sample")
+        choices <- c(choices, "Samples" = "sample")
     }
 
     choices
@@ -4030,19 +4020,14 @@ within_composition_choices <- function(obj) {
     choices <- character(0)
 
     time_col <- pick_first_existing_col(obj@meta.data, c("time_point", "Time point"))
-    condition_col <- pick_first_existing_col(obj@meta.data, c("Group", "condition"))
     sample_col <- pick_first_existing_col(obj@meta.data, c("sample_name", "Sample", "sample"))
 
     if (!is.na(time_col) && time_col %in% available_cols) {
         choices <- c(choices, "Time point" = time_col)
     }
 
-    if (!is.na(condition_col) && condition_col %in% available_cols) {
-        choices <- c(choices, "Condition" = condition_col)
-    }
-
     if (!is.na(sample_col) && sample_col %in% available_cols) {
-        choices <- c(choices, "Sample" = sample_col)
+        choices <- c(choices, "Samples" = sample_col)
     }
 
     choices

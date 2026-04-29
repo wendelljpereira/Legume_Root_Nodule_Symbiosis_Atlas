@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Last updated: 2026-04-24
+Last updated: 2026-04-28
 
 ## Project
 
@@ -17,7 +17,7 @@ The app is meant for scientific users who want to:
 
 - The Overview tab is a light orientation page.
 - Each within-species tab is independent. Local gene panels, marker additions, and expression plots should not leak into other species tabs.
-- Cross-species tabs are separate from the within-species tabs. They use a shared cross-species Gene expression panel driven by a selected source species.
+- Cross-species tabs are separate from the within-species tabs. They use a shared cross-species Gene expression panel that can stage genes from all three species.
 - Orthology-aware comparisons belong in CAMEX/SATURN, not in the within-species tabs.
 - Plot rows in within-species tabs appear only after the user clicks `Generate the expression plots`.
 
@@ -46,6 +46,10 @@ Key changes in the current work session:
 - Reframed the cross-species selector as the shared `Gene expression panel`.
 - Added a `Marker feature species` filter for integrated marker tables.
 - Added marker feature species to marker CSV exports when it can be inferred.
+- Removed `Condition` from within-species distribution/composition selectors; use explicit `Time point` and `Samples` choices instead.
+- Added a standalone precompute script for within-species 3D UMAP reductions so slim app files carry static `umap3d` coordinates and the app never computes them during startup or rendering.
+- Harmonized Lotus SATURN root/mock metadata into the `Roots` time point when that information is present in the dataset metadata.
+- Expanded the SATURN shared Gene expression panel to full width and increased the cross-species heatmap render height for small gene panels.
 
 ## Scientific Notes
 
@@ -69,6 +73,7 @@ Integrated per-cluster markers are useful, but they should be interpreted carefu
 - `scripts/build_atlas_summary_cache.R`: rebuild summary cards.
 - `scripts/build_cluster_markers_cache.R`: generate marker caches if needed, though the user may provide marker CSVs instead.
 - `scripts/build_startup_ui_cache.R`: rebuild cached UI choices/summaries.
+- `scripts/add_umap3d_to_within_species_slim.R`: precompute 3D UMAP coordinates from PCA-like reductions in full within-species objects and write them to slim app files.
 
 ## How To Launch And Validate
 
@@ -76,6 +81,16 @@ Source-check the app:
 
 ```bash
 Rscript -e 'source("app.R", local = new.env())'
+```
+
+After changing full within-species objects, rebuild static app data before launch:
+
+```bash
+Rscript scripts/build_within_app_slim.R
+Rscript scripts/add_umap3d_to_within_species_slim.R --overwrite
+Rscript scripts/build_gene_catalog_cache.R
+Rscript scripts/build_atlas_summary_cache.R
+Rscript scripts/build_startup_ui_cache.R
 ```
 
 Hard-restart local Shiny on the standard port:

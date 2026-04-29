@@ -143,19 +143,16 @@ within_group_choices_local <- function(obj) {
         }
     }
 
-    maybe_add("Clustering opt 1 label", "Rank_1st_label")
-    maybe_add("Clustering opt 2 label", "Rank_2nd_label")
-    maybe_add("Clustering opt 3 label", "Rank_3rd_label")
-    maybe_add("Clustering opt 4 label", "Rank_4th_label")
-    maybe_add("Clustering opt 5 label", "Rank_5th_label")
     maybe_add("Clustering opt 1", "Rank_1st")
     maybe_add("Clustering opt 2", "Rank_2nd")
     maybe_add("Clustering opt 3", "Rank_3rd")
     maybe_add("Clustering opt 4", "Rank_4th")
     maybe_add("Clustering opt 5", "Rank_5th")
-    maybe_add("Cluster", "cluster_label")
-    maybe_add("Condition", "Group")
-    maybe_add("Sample", "Sample")
+    maybe_add("Time point", "time_point")
+    maybe_add("Time point", "Time point")
+    maybe_add("Samples", "sample_name")
+    maybe_add("Samples", "Sample")
+    maybe_add("Samples", "sample")
     choices
 }
 
@@ -168,17 +165,17 @@ within_distribution_split_choices_local <- function(obj) {
     } else if ("Time point" %in% available_cols) {
         choices <- c(choices, "Time point" = "Time point")
     } else if ("Group" %in% available_cols) {
-        choices <- c(choices, "Condition" = "Group")
+        choices <- c(choices, "Time point" = "Group")
     } else if ("condition" %in% available_cols) {
-        choices <- c(choices, "Condition" = "condition")
+        choices <- c(choices, "Time point" = "condition")
     }
 
     if ("sample_name" %in% available_cols) {
-        choices <- c(choices, "Sample" = "sample_name")
+        choices <- c(choices, "Samples" = "sample_name")
     } else if ("Sample" %in% available_cols) {
-        choices <- c(choices, "Sample" = "Sample")
+        choices <- c(choices, "Samples" = "Sample")
     } else if ("sample" %in% available_cols) {
-        choices <- c(choices, "Sample" = "sample")
+        choices <- c(choices, "Samples" = "sample")
     }
 
     choices
@@ -193,19 +190,14 @@ within_composition_choices_local <- function(obj) {
     choices <- character(0)
 
     time_col <- pick_first_existing_col(obj@meta.data, c("time_point", "Time point"))
-    condition_col <- pick_first_existing_col(obj@meta.data, c("Group", "condition"))
     sample_col <- pick_first_existing_col(obj@meta.data, c("sample_name", "Sample", "sample"))
 
     if (!is.na(time_col) && time_col %in% available_cols) {
         choices <- c(choices, "Time point" = time_col)
     }
 
-    if (!is.na(condition_col) && condition_col %in% available_cols) {
-        choices <- c(choices, "Condition" = condition_col)
-    }
-
     if (!is.na(sample_col) && sample_col %in% available_cols) {
-        choices <- c(choices, "Sample" = sample_col)
+        choices <- c(choices, "Samples" = sample_col)
     }
 
     choices
