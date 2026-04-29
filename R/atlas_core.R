@@ -90,6 +90,7 @@ source(file.path("R", "atlas_annotations.R"), local = TRUE)
 orthogroups_path <- resolve_env_path("ATLAS_ORTHOLOGS_PATH", "orthogroups/joint_orthogroups.tsv")
 cluster_annotations_dir <- resolve_env_path("ATLAS_CLUSTER_ANNOTATIONS_DIR", "annotations/cluster_annotations")
 celltype_overrides_dir <- resolve_env_path("ATLAS_CELLTYPE_OVERRIDES_DIR", "celltype_overrides")
+sample_name_overrides_path <- resolve_env_path("ATLAS_SAMPLE_NAME_OVERRIDES_PATH", "metadata/sample_name_overrides.tsv")
 
 atlas_version <- resolve_env_path("ATLAS_VERSION", "1.0")
 atlas_last_updated <- resolve_env_path("ATLAS_LAST_UPDATED", format(Sys.Date(), "%Y-%m-%d"))
@@ -1127,6 +1128,221 @@ read_delimited_cache <- function(path) {
         as_tibble()
 }
 
+sample_name_override_columns <- c("species_key", "sample_name", "name_for_atlas")
+sample_name_metadata_columns <- c("sample_name", "sample", "Sample")
+
+read_sample_name_overrides <- function(path = sample_name_overrides_path) {
+    overrides <- read_delimited_cache(path)
+    if (is.null(overrides) || !nrow(overrides)) {
+        return(tibble::tibble(
+            species_key = character(0),
+            sample_name = character(0),
+            name_for_atlas = character(0)
+        ))
+    }
+
+    missing_cols <- setdiff(sample_name_override_columns, colnames(overrides))
+    if (length(missing_cols)) {
+        stop(
+            sprintf(
+                "Sample name override table '%s' is missing required columns: %s",
+                path,
+                paste(missing_cols, collapse = ", ")
+            ),
+            call. = FALSE
+        )
+    }
+
+    overrides %>%
+        dplyr::transmute(
+            species_key = trimws(as.character(.data$species_key)),
+            sample_name = trimws(as.character(.data$sample_name)),
+            name_for_atlas = trimws(as.character(.data$name_for_atlas))
+        ) %>%
+        dplyr::filter(
+            !is.na(.data$species_key), nzchar(.data$species_key),
+            !is.na(.data$sample_name), nzchar(.data$sample_name),
+            !is.na(.data$name_for_atlas), nzchar(.data$name_for_atlas)
+        )
+}
+
+sample_name_override_lookup <- function(species_key, path = sample_name_overrides_path) {
+    overrides <- read_sample_name_overrides(path) %>%
+        dplyr::filter(.data$species_key == !!species_key)
+
+    if (!nrow(overrides)) {
+        return(character(0))
+    }
+
+    lookup <- stats::setNames(overrides$name_for_atlas, overrides$sample_name)
+    stripped_names <- sub("_extended$", "", overrides$sample_name, perl = TRUE)
+    stripped_lookup <- stats::setNames(overrides$name_for_atlas, stripped_names)
+    stripped_lookup <- stripped_lookup[!names(stripped_lookup) %in% names(lookup)]
+
+    c(lookup, stripped_lookup)
+}
+
+sample_display_values <- function(overrides) {
+    ordered_values <- c(rbind(
+        overrides$name_for_atlas,
+        overrides$sample_name,
+        sub("_extended$", "", overrides$sample_name, perl = TRUE)
+    ))
+    ordered_values <- ordered_values[!is.na(ordered_values) & nzchar(ordered_values)]
+
+    unique(ordered_values)
+}
+
+sample_display_level_order <- function(present_levels = NULL, path = sample_name_overrides_path) {
+    overrides <- read_sample_name_overrides(path)
+
+    if (!nrow(overrides)) {
+        return(character(0))
+    }
+
+    species_orders <- lapply(split(overrides, overrides$species_key), sample_display_values)
+    species_order_keys <- c(within_species_keys, setdiff(names(species_orders), within_species_keys))
+    species_order_keys <- species_order_keys[species_order_keys %in% names(species_orders)]
+
+    present_levels <- unique(as.character(present_levels %||% character(0)))
+    present_levels <- present_levels[!is.na(present_levels) & nzchar(present_levels)]
+
+    if (length(present_levels)) {
+        overlap_counts <- vapply(
+            species_orders,
+            function(order_values) sum(present_levels %in% order_values),
+            integer(1)
+        )
+        complete_matches <- names(overlap_counts)[overlap_counts == length(present_levels)]
+
+        if (length(complete_matches)) {
+            best_species <- complete_matches[which.max(overlap_counts[complete_matches])]
+            return(species_orders[[best_species]])
+        }
+    }
+
+    unique(unlist(species_orders[species_order_keys], use.names = FALSE))
+}
+
+sample_display_timepoint <- function(values) {
+    values_chr <- as.character(values)
+    out <- rep(NA_character_, length(values_chr))
+
+    assign_match <- function(pattern, value) {
+        idx <- is.na(out) & grepl(pattern, values_chr, ignore.case = TRUE, perl = TRUE)
+        out[idx] <<- value
+    }
+
+    assign_match("(^|_)0\\.5hpi(_|$)", "0.5h")
+    assign_match("(^|_)96hpi(_|$)", "96h")
+    assign_match("(^|_)48hpi(_|$)", "48h")
+    assign_match("(^|_)24hpi(_|$)", "24h")
+    assign_match("(^|_)6hpi(_|$)", "6h")
+    assign_match("(^|_)5d(pi)?(_|$)", "5dpi")
+    assign_match("(^|_)10d(pi)?(_|$)", "10dpi")
+    assign_match("(^|_)12d(pi)?(_|$)", "12dpi")
+    assign_match("(^|_)14d(pi)?(_|$)", "14dpi")
+    assign_match("(^|_)15d(pi)?(_|$)", "15dpi")
+    assign_match("(^|_)21d(pi)?(_|$)", "21dpi")
+    assign_match("(^|_)28d(pi)?(_|$)", "28dpi")
+    assign_match("roots?", "Roots")
+
+    out
+}
+
+apply_sample_name_overrides <- function(obj, species_key = NULL) {
+    if (is.null(obj) || !length(obj@meta.data)) {
+        return(obj)
+    }
+
+    overrides <- read_sample_name_overrides()
+    if (!nrow(overrides)) {
+        return(obj)
+    }
+
+    available_columns <- intersect(sample_name_metadata_columns, colnames(obj@meta.data))
+    if (!length(available_columns)) {
+        return(obj)
+    }
+
+    for (override_species in unique(overrides$species_key)) {
+        row_idx <- rep(FALSE, nrow(obj@meta.data))
+
+        if (!is.null(species_key) && identical(species_key, override_species)) {
+            row_idx <- rep(TRUE, nrow(obj@meta.data))
+        } else if ("species" %in% colnames(obj@meta.data)) {
+            species_values <- as.character(obj@meta.data$species)
+            species_label_value <- species_registry[[override_species]]$label %||% override_species
+            row_idx <- species_values %in% c(override_species, species_label_value)
+        }
+
+        if (!any(row_idx, na.rm = TRUE)) {
+            next
+        }
+
+        lookup <- sample_name_override_lookup(override_species)
+        if (!length(lookup)) {
+            next
+        }
+
+        display_targets <- unique(unname(lookup))
+        display_values_by_row <- rep(NA_character_, nrow(obj@meta.data))
+
+        for (column_name in available_columns) {
+            values <- as.character(obj@meta.data[[column_name]])
+            hit_idx <- row_idx & values %in% names(lookup)
+            if (any(hit_idx, na.rm = TRUE)) {
+                values[hit_idx] <- unname(lookup[values[hit_idx]])
+                obj@meta.data[[column_name]] <- values
+            }
+
+            candidate_idx <- row_idx & is.na(display_values_by_row) & values %in% display_targets
+            if (any(candidate_idx, na.rm = TRUE)) {
+                display_values_by_row[candidate_idx] <- values[candidate_idx]
+            }
+        }
+
+        sync_idx <- row_idx & !is.na(display_values_by_row) & nzchar(display_values_by_row)
+        if (!any(sync_idx, na.rm = TRUE)) {
+            next
+        }
+
+        for (column_name in available_columns) {
+            values <- as.character(obj@meta.data[[column_name]])
+            values[sync_idx] <- display_values_by_row[sync_idx]
+            obj@meta.data[[column_name]] <- values
+        }
+    }
+
+    obj
+}
+
+apply_sample_timepoint_overrides <- function(obj) {
+    if (is.null(obj) || !length(obj@meta.data)) {
+        return(obj)
+    }
+
+    sample_col <- pick_first_existing_col(obj@meta.data, sample_name_metadata_columns)
+    if (is.null(sample_col) || is.na(sample_col) || !(sample_col %in% colnames(obj@meta.data))) {
+        return(obj)
+    }
+
+    expected_timepoints <- sample_display_timepoint(obj@meta.data[[sample_col]])
+    hit_idx <- !is.na(expected_timepoints) & nzchar(expected_timepoints)
+
+    if (!any(hit_idx, na.rm = TRUE)) {
+        return(obj)
+    }
+
+    for (column_name in intersect(c("Group", "time_point", "Time point"), colnames(obj@meta.data))) {
+        values <- as.character(obj@meta.data[[column_name]])
+        values[hit_idx] <- expected_timepoints[hit_idx]
+        obj@meta.data[[column_name]] <- values
+    }
+
+    obj
+}
+
 split_panel_count <- function(obj, split_by) {
     if (is.null(split_by) || !length(split_by) || identical(split_by, "none")) {
         return(1L)
@@ -1262,7 +1478,11 @@ metadata_level_order <- function(values, column_name) {
     }
 
     if (column_name %in% c("Sample", "sample", "sample_name")) {
-        return(sort(present_levels))
+        sample_order <- sample_display_level_order(present_levels)
+        return(c(
+            sample_order[sample_order %in% present_levels],
+            sort(setdiff(present_levels, sample_order))
+        ))
     }
 
     if (identical(column_name, "species")) {
@@ -1881,6 +2101,16 @@ apply_celltype_override <- function(obj, override_id) {
     )
 }
 
+normalize_timepoint_metadata <- function(obj) {
+    for (column_name in intersect(c("Group", "condition", "time_point", "Time point"), colnames(obj@meta.data))) {
+        values <- as.character(obj@meta.data[[column_name]])
+        values[values == "21pdi"] <- "21dpi"
+        obj@meta.data[[column_name]] <- values
+    }
+
+    obj
+}
+
 harmonize_within_metadata <- function(obj, override_id = NULL) {
     if (!identical(override_id, "lotus_Saturn") || !("time_point" %in% colnames(obj@meta.data))) {
         return(obj)
@@ -1906,12 +2136,21 @@ harmonize_within_metadata <- function(obj, override_id = NULL) {
 
 prepare_within_object <- function(obj, override_id = NULL) {
     obj <- harmonize_within_metadata(obj, override_id)
+    obj <- normalize_timepoint_metadata(obj)
+    obj <- apply_sample_name_overrides(
+        obj,
+        species_key = sub("_.*$", "", override_id %||% "", perl = TRUE)
+    )
+    obj <- apply_sample_timepoint_overrides(obj)
     obj <- apply_celltype_override(obj, override_id)
     obj <- apply_metadata_display_order(obj, colnames(obj@meta.data))
     obj
 }
 
 prepare_cross_object <- function(obj, cross_key) {
+    obj <- normalize_timepoint_metadata(obj)
+    obj <- apply_sample_name_overrides(obj)
+    obj <- apply_sample_timepoint_overrides(obj)
     obj <- apply_celltype_override(obj, cross_key)
 
     label_column <- dplyr::case_when(

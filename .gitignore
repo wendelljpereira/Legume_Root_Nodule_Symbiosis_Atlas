@@ -7,14 +7,15 @@ scripts/build_atlas_context_summary.py
 *.rds
 *.RDS
 
-# Runtime tables and annotations required by the app.
-!annotations/*.tsv
-!metadata/**/*.tsv
-!orthogroups/*.tsv
 *.pdf
 *.tsv
 *.png
 *.csv
+
+# Runtime tables and annotations required by the app.
+!annotations/*.tsv
+!metadata/sample_name_overrides.tsv
+!orthogroups/*.tsv
 !docs/_static/screenshots/*.png
 !annotations/cluster_annotations/*.csv
 .Rhistory

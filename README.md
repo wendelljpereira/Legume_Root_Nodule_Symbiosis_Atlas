@@ -98,6 +98,7 @@ The app reads expression data from Seurat RDS files, but the main scientific tab
 | `ATLAS_ORTHOLOGS_PATH` | `orthogroups/joint_orthogroups.tsv` | Ortholog/orthogroup table. TSV or CSV is auto-detected. |
 | `ATLAS_CLUSTER_ANNOTATIONS_DIR` | `annotations/cluster_annotations/` | Preferred folder for shipped or user-edited cluster annotation CSVs. |
 | `ATLAS_CELLTYPE_OVERRIDES_DIR` | `celltype_overrides/` | Legacy simple overrides with `cluster_id,label`; still supported. |
+| `ATLAS_SAMPLE_NAME_OVERRIDES_PATH` | `metadata/sample_name_overrides.tsv` | Optional table for replacing source sample IDs with atlas display names. |
 | `ATLAS_ACCESS_PASSWORD` | unset | Enables an optional access gate for private deployments. |
 | `ATLAS_VERSION` | `0.1.0-preview` | Displayed in the app footer and exports. |
 | `ATLAS_LAST_UPDATED` | current date | Displayed in the app footer. |
