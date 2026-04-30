@@ -50,6 +50,51 @@ test_that("average expression summaries are computed by metadata group", {
     expect_equal(unname(avg[, "1"]), c(6, 7))
 })
 
+test_that("feature UMAP keeps expressing and background cells at the same point size", {
+    counts <- Matrix::sparseMatrix(
+        i = c(1, 2, 1),
+        j = c(1, 2, 3),
+        x = c(1, 1, 2),
+        dims = c(2, 3),
+        dimnames = list(c("gene1", "gene2"), paste0("cell", 1:3))
+    )
+    obj <- Seurat::CreateSeuratObject(counts = counts)
+    obj[["umap"]] <- Seurat::CreateDimReducObject(
+        embeddings = matrix(
+            c(0, 0, 1, 1, 2, 0),
+            ncol = 2,
+            byrow = TRUE,
+            dimnames = list(colnames(obj), c("UMAP_1", "UMAP_2"))
+        ),
+        key = "UMAP_",
+        assay = SeuratObject::DefaultAssay(obj)
+    )
+
+    p <- atlas_env$emphasized_feature_plot(
+        obj,
+        feature_id = "gene1",
+        expression_values = stats::setNames(c(0, 1, 2), colnames(obj)),
+        pt_size = 0.37,
+        expressing_size_boost = 4
+    )
+
+    expect_equal(p$layers[[1]]$aes_params$size, 0.37)
+    expect_equal(p$layers[[2]]$aes_params$size, 0.37)
+    expect_true(all(!p$layers[[1]]$data$.is_expressing))
+    expect_true(all(p$layers[[2]]$data$.is_expressing))
+
+    flexible <- atlas_env$emphasized_feature_plot(
+        obj,
+        feature_id = "gene1",
+        expression_values = stats::setNames(c(0, 1, 2), colnames(obj)),
+        pt_size = 0.37,
+        preserve_aspect = FALSE
+    )
+
+    expect_s3_class(flexible$coordinates, "CoordCartesian")
+    expect_false(inherits(flexible$coordinates, "CoordFixed"))
+})
+
 test_that("sample name overrides apply to display metadata", {
     old_override_path <- atlas_env$sample_name_overrides_path
     atlas_env$sample_name_overrides_path <- file.path(project_root, "metadata", "sample_name_overrides.tsv")

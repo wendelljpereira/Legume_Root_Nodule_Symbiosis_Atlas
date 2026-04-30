@@ -557,19 +557,20 @@ compact_feature_legend_theme <- function() {
 
 sc_customize_feature_palette <- function(colorblind_safe = FALSE) {
     if (isTRUE(colorblind_safe)) {
-        return(viridisLite::cividis(100, end = 0.95))
+        return(viridisLite::viridis(120, option = "C", begin = 0.02, end = 0.98))
     }
 
-    palette_ref <- formals(scCustomize::FeaturePlot_scCustom)$colors_use
-    if (is.symbol(palette_ref)) {
-        return(get(as.character(palette_ref), envir = asNamespace("scCustomize")))
-    }
-
-    as.character(palette_ref)
+    grDevices::colorRampPalette(c(
+        "#ffea00",
+        "#ff9f1c",
+        "#ef476f",
+        "#9b1bb7",
+        "#240089"
+    ))(120)
 }
 
 sc_customize_feature_na_color <- function() {
-    as.character(formals(scCustomize::FeaturePlot_scCustom)$na_color %||% "lightgray")
+    "#8f9892"
 }
 
 feature_umap_point_size <- function(pt_size) {
@@ -598,9 +599,10 @@ emphasized_feature_plot <- function(
     num_columns = NULL,
     colors_use = NULL,
     zero_color = NULL,
-    expressing_size_boost = 2.4,
-    background_alpha = 0.14,
-    colorblind_safe = FALSE
+    expressing_size_boost = 1,
+    background_alpha = 0.42,
+    colorblind_safe = FALSE,
+    preserve_aspect = TRUE
 ) {
     available_reductions <- Reductions(obj)
     if (!length(available_reductions)) {
@@ -663,13 +665,19 @@ emphasized_feature_plot <- function(
     coord_df <- coord_df %>%
         dplyr::mutate(
             .is_expressing = .data$.expression > 0,
-            .alpha = ifelse(.data$.is_expressing, 0.95, background_alpha)
+            .alpha = ifelse(.data$.is_expressing, 0.96, background_alpha)
         ) %>%
+        dplyr::arrange(.data$.is_expressing, .data$.expression)
+
+    background_df <- coord_df %>%
+        dplyr::filter(!.data$.is_expressing)
+    expression_df <- coord_df %>%
+        dplyr::filter(.data$.is_expressing) %>%
         dplyr::arrange(.data$.expression)
 
     p <- ggplot(coord_df, aes(x = .data$.dim1, y = .data$.dim2)) +
         geom_point(
-            data = dplyr::filter(coord_df, !.data$.is_expressing),
+            data = background_df,
             aes(alpha = .data$.alpha),
             color = zero_color,
             size = pt_size,
@@ -677,14 +685,19 @@ emphasized_feature_plot <- function(
             shape = 16
         ) +
         geom_point(
-            data = dplyr::filter(coord_df, .data$.is_expressing),
+            data = expression_df,
             aes(color = .data$.expression, alpha = .data$.alpha),
-            size = max(pt_size, pt_size * expressing_size_boost),
+            size = pt_size,
             stroke = 0,
             shape = 16
         ) +
-        scale_alpha_identity() +
-        coord_fixed()
+        scale_alpha_identity()
+
+    p <- if (isTRUE(preserve_aspect)) {
+        p + coord_fixed()
+    } else {
+        p + coord_cartesian()
+    }
 
     p <- p + scale_color_gradientn(
         colors = colors_use,
@@ -1046,7 +1059,7 @@ feature_umap_height_px <- function(feature_n, feature_cols, split_by = "none", p
     }
 
     rows_per_gene <- ceiling(max(1L, as.integer(panels_per_gene %||% 1L)) / feature_cols)
-    max(760L, as.integer(ceiling(feature_n * (rows_per_gene * 320 + 140))))
+    max(700L, as.integer(ceiling(feature_n * (rows_per_gene * 285 + 110))))
 }
 
 feature_umap_height_inches <- function(feature_n, feature_cols, split_by = "none", panels_per_gene = 1L) {
@@ -1695,10 +1708,10 @@ group_palette_for_toggle <- function(values, column_name, colorblind_safe = FALS
 
 expression_heatmap_z_palette <- function(colorblind_safe = FALSE) {
     if (isTRUE(colorblind_safe)) {
-        return(c(low = "#315a8c", mid = "#fff8df", high = "#b45f1f"))
+        return(c(low = "#243b7a", mid = "#fff4bf", high = "#c24f00"))
     }
 
-    c(low = "#315f72", mid = "#fff7d6", high = "#9b3f52")
+    c(low = "#24105f", mid = "#fff3b0", high = "#d7197c")
 }
 
 row_scale_average_expression_matrix <- function(avg_expr_mat) {

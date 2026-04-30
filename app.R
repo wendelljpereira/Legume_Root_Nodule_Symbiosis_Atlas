@@ -3450,10 +3450,17 @@ server <- function(input, output, session) {
 	                        legend.title = element_blank(),
 	                        legend.position = "none",
 	                        panel.grid = element_blank(),
+	                        panel.spacing = grid::unit(0.18, "lines"),
 	                        axis.title = element_blank(),
 	                        axis.text = element_blank(),
 	                        axis.ticks = element_blank(),
 	                        axis.line = element_blank(),
+	                        strip.background = element_blank(),
+	                        strip.text = element_text(
+	                            face = "bold",
+	                            colour = app_palette["text"],
+	                            size = 11
+	                        ),
 	                        plot.margin = margin(4, 8, 6, 6)
 	                    )
 
@@ -3485,9 +3492,10 @@ server <- function(input, output, session) {
                         split_by = if (split_enabled) split_by else NULL,
                         pt_size = feature_pt_size,
                         num_columns = split_columns,
-                        background_alpha = 0.12,
-                        expressing_size_boost = 2.4,
-                        colorblind_safe = isTRUE(input$colorblind_safe)
+                        background_alpha = 0.42,
+                        expressing_size_boost = 1,
+                        colorblind_safe = isTRUE(input$colorblind_safe),
+                        preserve_aspect = !split_enabled
                     )
 
                     feature_plot <- feature_plot &
@@ -3499,10 +3507,17 @@ server <- function(input, output, session) {
                         scale_y_continuous(expand = expansion(mult = 0.01)) &
                         theme(
                             panel.grid = element_blank(),
+                            panel.spacing = grid::unit(0.18, "lines"),
                             axis.title = element_blank(),
                             axis.text = element_blank(),
                             axis.ticks = element_blank(),
                             axis.line = element_blank(),
+                            strip.background = element_blank(),
+                            strip.text = element_text(
+                                face = "bold",
+                                colour = app_palette["text"],
+                                size = 11
+                            ),
                             plot.margin = margin(4, 8, 6, 6)
                         )
 
@@ -4767,7 +4782,7 @@ server <- function(input, output, session) {
 
             ortholog_trace_plot_obj <- reactive({
                 row_specs <- ortholog_trace_specs()
-                pt_size <- max(0.65, as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75))
+                pt_size <- as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75)
 
                 row_plots <- lapply(row_specs, function(row_spec) {
                     expression_max <- max(unlist(lapply(row_spec$species_specs, function(spec) {
@@ -4808,7 +4823,7 @@ server <- function(input, output, session) {
                             fixed_max = expression_max,
                             pt_size = feature_umap_point_size(pt_size),
                             colorblind_safe = isTRUE(input$colorblind_safe),
-                            expressing_size_boost = 0
+                            expressing_size_boost = 1
                         ) +
                             labs(title = NULL, color = NULL) +
                             app_plot_theme() +
@@ -4851,7 +4866,7 @@ server <- function(input, output, session) {
                 obj <- cross_object()
                 panel_specs <- cross_comparison_panel_specs(resolution, cross_key)
                 block_cols <- 1L
-                pt_size <- max(0.65, as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75))
+                pt_size <- as.numeric(input[[paste0(prefix, "_dist_pt_size")]] %||% 0.75)
                 reference_group_by <- cross_feature_reference_group_by()
                 reference_is_cluster <- is_cluster_distribution_group(reference_group_by)
                 species_cells <- lapply(within_species_keys, function(species_key) {
@@ -4959,7 +4974,7 @@ server <- function(input, output, session) {
                                 fixed_max = expression_max,
                                 pt_size = feature_umap_point_size(pt_size),
                                 colorblind_safe = isTRUE(input$colorblind_safe),
-                                expressing_size_boost = 0
+                                expressing_size_boost = 1
                             )
 
                             feature_plot <- feature_plot +
